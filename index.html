@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ayan's Second Brain</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+<style>
+:root{
+  --bg:#f6f5f1;--panel:#ffffff;--side:#eeece6;--text:#1f1f22;--muted:#6c6b70;--faint:#9a989e;
+  --line:#e2dfd7;--accent:#4f46e5;--accent-weak:#eceafd;--danger:#c93c3c;--ok:#22875c;--warn:#b7791f;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.05);--radius:12px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#131316;--panel:#1b1b1f;--side:#17171a;--text:#ececef;--muted:#a2a1a9;--faint:#6e6d75;
+    --line:#2b2b31;--accent:#8b85ff;--accent-weak:#25234a;--danger:#ef6b6b;--ok:#4cc38a;--warn:#e0a548;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 14px rgba(0,0,0,.25);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131316;--panel:#1b1b1f;--side:#17171a;--text:#ececef;--muted:#a2a1a9;--faint:#6e6d75;
+  --line:#2b2b31;--accent:#8b85ff;--accent-weak:#25234a;--danger:#ef6b6b;--ok:#4cc38a;--warn:#e0a548;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 14px rgba(0,0,0,.25);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,Inter,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-decoration:none}
+button,input,select,textarea{font:inherit;color:inherit}
+.app{display:grid;grid-template-columns:250px 1fr;min-height:100vh}
+
+/* Sidebar */
+.side{background:var(--side);border-right:1px solid var(--line);padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 10px 14px;font-weight:700;font-size:16px}
+.brand .logo{width:34px;height:34px;border-radius:10px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:18px}
+.brand small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+.searchbtn{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border:1px solid var(--line);background:var(--panel);border-radius:9px;color:var(--muted);cursor:pointer;margin-bottom:10px;text-align:left}
+.searchbtn kbd{margin-left:auto}
+kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;color:var(--muted);background:var(--bg)}
+.nav a{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;color:var(--text)}
+.nav a:hover{background:var(--panel)}
+.nav a.on{background:var(--accent-weak);color:var(--accent);font-weight:600}
+.nav .ico{width:20px;text-align:center}
+.nav .cnt{margin-left:auto;font-size:12px;color:var(--muted);background:var(--panel);border-radius:20px;padding:0 8px}
+.sec{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:16px 10px 6px;font-weight:600}
+.tags{display:flex;flex-wrap:wrap;gap:6px;padding:0 8px}
+.side-foot{margin-top:auto;padding-top:16px;display:flex;gap:6px;flex-wrap:wrap}
+
+/* Main */
+.main{min-width:0}
+.top{display:none;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--side);position:sticky;top:0;z-index:5}
+.wrap{max-width:1040px;margin:0 auto;padding:28px 32px 80px}
+h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0 0 22px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.head h1{margin:0}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel);padding:7px 13px;border-radius:9px;cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--faint)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.pri:hover{filter:brightness(1.08)}
+.btn.sm{padding:4px 9px;font-size:13px;border-radius:7px}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn.ghost:hover{background:var(--panel);color:var(--text)}
+.btn.danger{color:var(--danger)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
+.panel h3{margin:0 0 12px;font-size:14px;display:flex;align-items:center;gap:8px}
+.panel h3 .more{margin-left:auto;font-weight:500;font-size:13px}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:18px 0}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+.stat b{display:block;font-size:24px;font-variant-numeric:tabular-nums;line-height:1.2}
+.stat span{color:var(--muted);font-size:13px}
+.empty{color:var(--muted);font-size:14px;padding:10px 0}
+
+/* Capture */
+.capture{display:flex;gap:10px;align-items:flex-start}
+.capture textarea{flex:1;min-height:52px;resize:vertical}
+textarea,input[type=text],input[type=url],input[type=date],input[type=search],select{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px;outline:none;width:100%}
+textarea:focus,input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
+
+/* Cards */
+.card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;color:var(--text);transition:border-color .15s,transform .15s}
+.card:hover{border-color:var(--accent);transform:translateY(-1px)}
+.card-t{font-weight:600;display:flex;gap:8px;align-items:center}
+.card-s{color:var(--muted);font-size:13.5px;margin:6px 0 8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.card-m{font-size:12px;color:var(--faint);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.pin{color:var(--warn)}
+.chip{display:inline-flex;align-items:center;font-size:12px;padding:1px 8px;border-radius:20px;background:var(--accent-weak);color:var(--accent);cursor:pointer;border:0}
+.chip.plain{cursor:default}
+.badge{font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--line);color:var(--muted);text-transform:capitalize}
+.row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .t{flex:1;min-width:0}
+.row .t a{color:var(--text)}
+.row.done .t a{text-decoration:line-through;color:var(--faint)}
+.row input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent);cursor:pointer;flex:none}
+.due{font-size:12px;color:var(--muted);white-space:nowrap}
+.due.over{color:var(--danger);font-weight:600}
+.due.today{color:var(--warn);font-weight:600}
+.pr{width:8px;height:8px;border-radius:50%;flex:none;background:var(--line)}
+.pr.high{background:var(--danger)}.pr.normal{background:var(--warn)}.pr.low{background:var(--ok)}
+.prog{height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:8px}
+.prog i{display:block;height:100%;background:var(--ok);border-radius:6px}
+.tabs{display:flex;gap:4px;background:var(--side);padding:4px;border-radius:10px;flex-wrap:wrap}
+.tabs button{border:0;background:transparent;padding:5px 12px;border-radius:7px;cursor:pointer;color:var(--muted);font-weight:500}
+.tabs button.on{background:var(--panel);color:var(--text);box-shadow:var(--shadow)}
+.quote{font-style:italic;color:var(--muted);border-left:3px solid var(--accent);padding:2px 0 2px 14px;margin:0}
+
+/* Editor */
+.ed-top{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.ed-title{font-size:28px;font-weight:700;border:0!important;background:transparent!important;box-shadow:none!important;padding:4px 0!important;letter-spacing:-.01em}
+.fields{display:flex;gap:12px;flex-wrap:wrap;margin:6px 0 16px}
+.fields label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:150px}
+.fields label.grow{flex:1;min-width:240px}
+.fields label.chk{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var(--text);min-width:auto;align-self:flex-end;padding-bottom:9px}
+.body-ed{min-height:380px;font:14.5px/1.65 ui-monospace,"Cascadia Code",Consolas,monospace;resize:vertical}
+.meta{color:var(--faint);font-size:12px;margin-top:10px}
+.md{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 22px;min-height:380px;overflow-wrap:anywhere}
+.md h1{font-size:22px;margin:.4em 0}.md h2{font-size:18px;margin:1em 0 .4em}.md h3{font-size:16px;margin:1em 0 .3em}
+.md p{margin:.5em 0}.md ul,.md ol{margin:.4em 0;padding-left:1.5em}
+.md li.ck{list-style:none;margin-left:-1.4em}
+.md li.ck input{margin-right:8px;accent-color:var(--accent)}
+.md li.ck.x span{text-decoration:line-through;color:var(--faint)}
+.md code{background:var(--side);padding:1px 6px;border-radius:5px;font-size:.9em}
+.md pre{background:var(--side);padding:12px 14px;border-radius:9px;overflow:auto}
+.md pre code{background:none;padding:0}
+.md blockquote{border-left:3px solid var(--accent);margin:.6em 0;padding:2px 14px;color:var(--muted)}
+.md hr{border:0;border-top:1px solid var(--line);margin:1.2em 0}
+.wl{background:var(--accent-weak);padding:0 4px;border-radius:4px;cursor:pointer}
+.wl.new{opacity:.7;border-bottom:1px dashed var(--accent)}
+.side-box{margin-top:18px}
+
+/* Journal strip */
+.strip{display:flex;gap:4px;flex-wrap:wrap}
+.strip a{width:16px;height:16px;border-radius:4px;background:var(--line);display:block}
+.strip a.on{background:var(--ok)}
+.strip a.td{outline:2px solid var(--accent);outline-offset:1px}
+
+/* Palette */
+.pal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:flex-start;justify-content:center;padding:12vh 16px 16px;z-index:50}
+.pal.open{display:flex}
+.pal-box{width:100%;max-width:620px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+.pal-box input{border:0!important;box-shadow:none!important;border-bottom:1px solid var(--line)!important;border-radius:0!important;padding:16px 18px;font-size:16px;background:var(--panel)}
+.pal-r{max-height:52vh;overflow:auto;padding:6px}
+.pal-r a{display:flex;gap:10px;align-items:center;padding:9px 12px;border-radius:8px;color:var(--text)}
+.pal-r a small{margin-left:auto;color:var(--faint)}
+.pal-r a.sel{background:var(--accent-weak)}
+.saved{position:fixed;bottom:16px;right:16px;background:var(--text);color:var(--bg);font-size:12px;padding:5px 12px;border-radius:20px;opacity:0;transition:opacity .3s;pointer-events:none}
+.saved.show{opacity:.85}
+
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  .side{position:fixed;left:0;top:0;bottom:0;width:270px;z-index:40;transform:translateX(-100%);transition:transform .2s;box-shadow:var(--shadow)}
+  .side.open{transform:none}
+  .top{display:flex}
+  .wrap{padding:20px 16px 80px}
+  .g2{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .capture{flex-direction:column}.capture .btn{align-self:flex-end}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <div class="main">
+    <div class="top"><button class="btn sm" data-act="menu">☰</button><b>🧠 Second Brain</b><button class="btn sm" style="margin-left:auto" data-act="search">🔍</button></div>
+    <main class="wrap" id="view"></main>
+  </div>
+</div>
+<div class="pal" id="pal"><div class="pal-box"><input id="palq" type="search" placeholder="Search everything, or type to create…" autocomplete="off"><div class="pal-r" id="palr"></div></div></div>
+<div class="saved" id="saved">Saved ✓</div>
+<input type="file" id="importFile" accept="application/json" hidden>
+
+<script>
+(() => {
+const KEY = 'ayan-second-brain-v1';
+const OWNER = 'Ayan';
+const TYPES = {
+  inbox:   {label:'Inbox',   plural:'Inbox',    icon:'📥', route:'inbox'},
+  note:    {label:'Note',    plural:'Notes',    icon:'📝', route:'notes'},
+  idea:    {label:'Idea',    plural:'Ideas',    icon:'💡', route:'ideas'},
+  project: {label:'Project', plural:'Projects', icon:'🚀', route:'projects'},
+  task:    {label:'Task',    plural:'Tasks',    icon:'✅', route:'tasks'},
+  journal: {label:'Journal', plural:'Journal',  icon:'📔', route:'journal'},
+  link:    {label:'Resource',plural:'Library',  icon:'🔗', route:'library'}
+};
+const QUOTES = [
+  ['Your mind is for having ideas, not holding them.','David Allen'],
+  ['What gets written down gets done.','Unknown'],
+  ['We do not learn from experience… we learn from reflecting on experience.','John Dewey'],
+  ['The faintest ink is more powerful than the strongest memory.','Chinese proverb'],
+  ['Small daily improvements are the key to staggering long-term results.','Robin Sharma'],
+  ['Clarity comes from engagement, not thought.','Marie Forleo'],
+  ['You do not rise to the level of your goals. You fall to the level of your systems.','James Clear']
+];
+const JOURNAL_TPL = "## 🎯 Today's focus\n- \n\n## 🙏 Grateful for\n1. \n2. \n3. \n\n## 🏆 Wins\n- \n\n## 💭 Thoughts & lessons\n";
+
+/* ---------- utils ---------- */
+const $ = s => document.querySelector(s);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ymd = (d = new Date()) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
+const niceDate = s => new Date(s + 'T00:00:00').toLocaleDateString(undefined, {weekday:'short', day:'numeric', month:'short', year:'numeric'});
+const shortDate = s => new Date(s + 'T00:00:00').toLocaleDateString(undefined, {day:'numeric', month:'short'});
+function ago(ts) {
+  const m = Math.round((Date.now() - ts) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.round(m / 60); if (h < 24) return h + 'h ago';
+  const d = Math.round(h / 24); if (d < 7) return d + 'd ago';
+  return new Date(ts).toLocaleDateString(undefined, {day:'numeric', month:'short', year:'numeric'});
+}
+function dueInfo(due) {
+  if (!due) return null;
+  const t = ymd();
+  if (due < t) return {cls:'over', txt:'Overdue · ' + shortDate(due)};
+  if (due === t) return {cls:'today', txt:'Today'};
+  if (due === addDays(t, 1)) return {cls:'', txt:'Tomorrow'};
+  return {cls:'', txt:shortDate(due)};
+}
+const tagsOf = it => {
+  const s = (it.title || '') + ' ' + (it.body || '');
+  const out = new Set(); let m; const re = /(^|\s)#([A-Za-z][\w-]*)/g;
+  while ((m = re.exec(s))) out.add(m[2].toLowerCase());
+  return [...out];
+};
+const plain = s => String(s || '').replace(/```[\s\S]*?```/g, ' ').replace(/[#>*`_\[\]-]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+/* ---------- data ---------- */
+let db = load();
+function load() {
+  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && Array.isArray(d.items)) return d; } catch (e) {}
+  return seed();
+}
+let saveT, flashT;
+function save(now) {
+  clearTimeout(saveT);
+  const go = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { if (!cloud) alert('Could not save — storage may be full or blocked.'); }
+    syncCloud();
+    const el = $('#saved'); el.textContent = cloud ? 'Saved ☁️' : 'Saved on this device ✓'; el.classList.add('show'); clearTimeout(flashT); flashT = setTimeout(() => el.classList.remove('show'), 900); };
+  now ? go() : (saveT = setTimeout(go, 400));
+}
+const get = id => db.items.find(i => i.id === id);
+const of = t => db.items.filter(i => i.type === t);
+const byTitle = t => db.items.find(i => (i.title || '').trim().toLowerCase() === t.trim().toLowerCase());
+const sortRecent = a => a.sort((x, y) => (!!y.pinned - !!x.pinned) || (y.updated - x.updated));
+function make(type, extra = {}) {
+  const it = {id:uid(), type, title:'', body:'', tags:[], pinned:false, created:Date.now(), updated:Date.now(), ...extra};
+  if (type === 'task') Object.assign(it, {done:false, due:'', priority:'normal', projectId:'', ...extra});
+  if (type === 'project') Object.assign(it, {status:'active', ...extra});
+  if (type === 'link') Object.assign(it, {url:'', ...extra});
+  db.items.push(it); save(true); return it;
+}
+const touch = it => { it.updated = Date.now(); save(); };
+
+/* ---------- cloud sync (when opened as a claude.ai artifact) ---------- */
+// Each item is its own private doc under data/users/<you>/; settings live on the parent doc.
+let cloud = null, synced = new Map(), syncing = false, again = false, cloudErr = '';
+const snapshot = () => { const m = new Map(db.items.map(i => [i.id, JSON.stringify(i)])); m.set('__settings', JSON.stringify(db.settings || {})); return m; };
+async function initCloud() {
+  if (!window.claude || typeof window.claude.use !== 'function') return;
+  try {
+    const [d, u] = await Promise.all([claude.use('db'), claude.use('user')]);
+    const me = u && await u.id();
+    if (!d || !me) return;
+    const root = d.doc('data/users/' + me + '/brain'), col = root.collection('items');
+    const [rs, qs] = await Promise.all([root.get(), col.limit(1000).get()]);
+    cloud = {root, col};
+    if (qs.empty && !rs.exists) { synced = new Map(); syncCloud(); }          // first visit: upload what's here
+    else {
+      db.items = qs.docs.map(x => ({...x.data()}));
+      if (rs.exists) db.settings = {theme:'auto', ...rs.data()};
+      synced = snapshot();
+      try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {}
+    }
+    render();
+  } catch (e) { cloudErr = e && e.code || 'error'; render(); }
+}
+async function syncCloud() {
+  if (!cloud) return;
+  if (syncing) { again = true; return; }
+  syncing = true;
+  try {
+    do {
+      again = false;
+      const cur = snapshot();
+      for (const [id, json] of cur) {
+        if (synced.get(id) === json) continue;
+        if (id === '__settings') await cloud.root.set(JSON.parse(json));
+        else await cloud.col.doc(id).set(JSON.parse(json));
+        synced.set(id, json);
+      }
+      for (const id of [...synced.keys()]) if (!cur.has(id)) { await cloud.col.doc(id).delete(); synced.delete(id); }
+    } while (again);
+    cloudErr = '';
+  } catch (e) {
+    cloudErr = e && e.code || 'error';
+    if (cloudErr === 'quota_exceeded') alert('Cloud storage is full — delete some items or export a backup. Changes are still saved on this device.');
+  }
+  syncing = false;
+  const s = document.getElementById('syncstat'); if (s) s.innerHTML = syncLabel();
+}
+const syncLabel = () => cloud ? (cloudErr ? '⚠️ Sync issue — saved on this device' : '☁️ Synced to your account') : '💾 Saved on this device';
+
+function seed() {
+  const t = ymd(), n = Date.now();
+  const P = uid();
+  const mk = (o, i) => ({id:uid(), tags:[], pinned:false, body:'', created:n - i * 3600e3, updated:n - i * 3600e3, ...o});
+  return {settings:{theme:'auto'}, items:[
+    mk({type:'note', pinned:true, title:'Welcome to your Second Brain',
+      body:"# Hi " + OWNER + " 👋\n\nThis is your personal knowledge system — a place to **capture**, **organize**, **distill** and **express** everything that matters.\n\n## How to use it\n- 📥 **Inbox** — dump any thought fast. Sort it later.\n- 📝 **Notes** — evergreen knowledge you want to keep.\n- 💡 **Ideas** — sparks worth exploring.\n- 🚀 **Projects** — outcomes with a finish line. Tasks link to them.\n- ✅ **Tasks** — with due dates & priority.\n- 📔 **Journal** — one entry per day.\n- 🔗 **Library** — articles, videos, tools.\n\n## Superpowers\n- Link notes with double brackets: [[Areas of My Life]]\n- Tag anything with a hashtag: #learning #work\n- Checklists are clickable in Preview:\n- [x] Open my second brain\n- [ ] Capture my first thought\n- [ ] Write today's journal\n\n> Press `Ctrl + K` anywhere to search or create.\n\nEverything is saved automatically in this browser. Use **Export** (bottom-left) to back up."}, 0),
+    mk({type:'note', title:'Areas of My Life', body:"Ongoing responsibilities with no end date. Review monthly. #review\n\n## 💼 Work & Career\n- \n\n## 💪 Health & Fitness\n- \n\n## 📚 Learning\n- \n\n## 💰 Finance\n- \n\n## ❤️ Family & Relationships\n- \n\nBack to [[Welcome to your Second Brain]]"}, 1),
+    mk({type:'project', id:P, title:'Set up my Second Brain', status:'active', body:"**Goal:** make this the single home for my thoughts, tasks and learning.\n\n**Done when:** I've used it daily for 2 weeks. #personal"}, 2),
+    mk({type:'task', title:'Capture 5 thoughts into the Inbox', done:false, due:t, priority:'high', projectId:P}, 3),
+    mk({type:'task', title:"Write today's journal entry", done:false, due:t, priority:'normal', projectId:P}, 4),
+    mk({type:'task', title:'Fill in [[Areas of My Life]]', done:false, due:addDays(t, 2), priority:'normal', projectId:P}, 5),
+    mk({type:'task', title:'Weekly review every Sunday #review', done:false, due:'', priority:'low', projectId:P}, 6),
+    mk({type:'task', title:'Open my second brain for the first time', done:true, due:t, priority:'normal', projectId:P}, 7),
+    mk({type:'idea', title:'Ideas worth exploring', body:"- A habit I want to build…\n- A skill to learn this year…\n- Something to automate at work… #learning"}, 8),
+    mk({type:'link', title:'Building a Second Brain — Tiago Forte', url:'https://www.buildingasecondbrain.com/', body:'The method behind this system: CODE (Capture, Organize, Distill, Express) and PARA. #learning'}, 9),
+    mk({type:'inbox', title:'Try capturing a random thought here — then turn it into a note, task or idea.'}, 10)
+  ]};
+}
+
+/* ---------- markdown ---------- */
+function inline(s) {
+  return s
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/\*([^*\s][^*]*?)\*/g, '<i>$1</i>')
+    .replace(/~~(.+?)~~/g, '<s>$1</s>')
+    .replace(/\[\[([^\]]+)\]\]/g, (_, t) => {
+      const raw = t.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'");
+      return `<a class="wl${byTitle(raw) ? '' : ' new'}" data-act="wl" data-wl="${t}">${t}</a>`;
+    })
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/(^|\s)(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>')
+    .replace(/(^|\s)#([A-Za-z][\w-]*)/g, (_, p, t) => `${p}<span class="chip" data-act="tag" data-tag="${t.toLowerCase()}">#${t}</span>`);
+}
+function md(src) {
+  const lines = String(src || '').split('\n');
+  let out = '', list = null, code = false, buf = [];
+  const close = () => { if (list) { out += `</${list}>`; list = null; } };
+  const open = t => { if (list !== t) { close(); out += `<${t}>`; list = t; } };
+  lines.forEach((ln, i) => {
+    if (/^```/.test(ln)) { if (code) { out += `<pre><code>${esc(buf.join('\n'))}</code></pre>`; buf = []; code = false; } else { close(); code = true; } return; }
+    if (code) { buf.push(ln); return; }
+    const e = esc(ln); let m;
+    if ((m = e.match(/^(#{1,3})\s+(.*)/))) { close(); out += `<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`; }
+    else if ((m = e.match(/^\s*[-*]\s+\[( |x|X)\]\s?(.*)/))) { open('ul'); const x = m[1] !== ' '; out += `<li class="ck${x ? ' x' : ''}"><input type="checkbox" data-act="chk" data-ln="${i}"${x ? ' checked' : ''}><span>${inline(m[2])}</span></li>`; }
+    else if ((m = e.match(/^\s*[-*]\s+(.*)/))) { open('ul'); out += `<li>${inline(m[1])}</li>`; }
+    else if ((m = e.match(/^\s*\d+\.\s+(.*)/))) { open('ol'); out += `<li>${inline(m[1])}</li>`; }
+    else if ((m = e.match(/^&gt;\s?(.*)/))) { close(); out += `<blockquote>${inline(m[1])}</blockquote>`; }
+    else if (/^\s*---+\s*$/.test(e)) { close(); out += '<hr>'; }
+    else if (!e.trim()) { close(); }
+    else { close(); out += `<p>${inline(e)}</p>`; }
+  });
+  if (code) out += `<pre><code>${esc(buf.join('\n'))}</code></pre>`;
+  close();
+  return out || '<p class="empty">Nothing here yet — switch to Write.</p>';
+}
+
+/* ---------- routing ---------- */
+let ui = {taskFilter:'focus', mode:{}, q:''};
+function route() {
+  const h = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
+  const [a, ...rest] = h.split('/'); return {name:a || 'home', arg:rest.join('/')};
+}
+const go = h => { if (location.hash === h) render(); else location.hash = h; };
+window.addEventListener('hashchange', () => { $('#side').classList.remove('open'); render(); window.scrollTo(0, 0); });
+
+/* ---------- render ---------- */
+function render() {
+  applyTheme();
+  const r = route();
+  $('#side').innerHTML = sidebar(r);
+  const v = $('#view');
+  if (r.name === 'home') v.innerHTML = home();
+  else if (r.name === 'item') { const it = get(r.arg); v.innerHTML = it ? itemView(it) : '<p class="empty">This item no longer exists. <a href="#/">Go home</a></p>'; }
+  else if (r.name === 'tag') v.innerHTML = tagView(r.arg);
+  else if (r.name === 'tasks') v.innerHTML = tasksView();
+  else if (r.name === 'journal') v.innerHTML = journalView();
+  else if (r.name === 'inbox') v.innerHTML = inboxView();
+  else { const t = Object.keys(TYPES).find(k => TYPES[k].route === r.name); v.innerHTML = t ? listView(t) : home(); }
+}
+
+function sidebar(r) {
+  const openTasks = of('task').filter(t => !t.done).length;
+  const counts = {inbox:of('inbox').length, notes:of('note').length, ideas:of('idea').length, projects:of('project').filter(p => p.status === 'active').length, tasks:openTasks, journal:of('journal').length, library:of('link').length};
+  const cur = r.name === 'item' ? (get(r.arg) && TYPES[get(r.arg).type].route) : (r.name === 'home' ? '' : r.name);
+  const link = (route, icon, label, c) => `<a href="#/${route}" class="${cur === route ? 'on' : ''}"><span class="ico">${icon}</span>${label}${c ? `<span class="cnt">${c}</span>` : ''}</a>`;
+  const tagCounts = {};
+  db.items.forEach(i => tagsOf(i).forEach(t => tagCounts[t] = (tagCounts[t] || 0) + 1));
+  const tags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 24);
+  return `
+    <div class="brand"><div class="logo">🧠</div><div>${OWNER} Das<small>Second Brain</small></div></div>
+    <button class="searchbtn" data-act="search">🔍 Search… <kbd>Ctrl K</kbd></button>
+    <nav class="nav">
+      ${link('', '🏠', 'Home')}
+      ${link('inbox', '📥', 'Inbox', counts.inbox)}
+      <div class="sec">Knowledge</div>
+      ${link('notes', '📝', 'Notes', counts.notes)}
+      ${link('ideas', '💡', 'Ideas', counts.ideas)}
+      ${link('library', '🔗', 'Library', counts.library)}
+      <div class="sec">Action</div>
+      ${link('projects', '🚀', 'Projects', counts.projects)}
+      ${link('tasks', '✅', 'Tasks', counts.tasks)}
+      ${link('journal', '📔', 'Journal', counts.journal)}
+    </nav>
+    ${tags.length ? `<div class="sec">Tags</div><div class="tags">${tags.map(([t, c]) => `<button class="chip" data-act="tag" data-tag="${esc(t)}">#${esc(t)} <span style="opacity:.6;margin-left:4px">${c}</span></button>`).join('')}</div>` : ''}
+    <div class="side-foot">
+      <div id="syncstat" class="meta" style="width:100%;margin:0 0 4px 6px">${syncLabel()}</div>
+      <button class="btn sm ghost" data-act="export" title="Download a backup">⬇ Export</button>
+      <button class="btn sm ghost" data-act="import" title="Restore from a backup">⬆ Import</button>
+      <button class="btn sm ghost" data-act="theme" title="Toggle theme">${themeIcon()}</button>
+    </div>`;
+}
+
+function card(it) {
+  const T = TYPES[it.type];
+  let sub = plain(it.body).slice(0, 160);
+  if (it.type === 'link' && it.url) sub = it.url.replace(/^https?:\/\//, '') + (sub ? ' — ' + sub : '');
+  let extra = '';
+  if (it.type === 'project') {
+    const ts = of('task').filter(t => t.projectId === it.id), d = ts.filter(t => t.done).length;
+    extra = `<div class="prog"><i style="width:${ts.length ? Math.round(d / ts.length * 100) : 0}%"></i></div><div class="card-m" style="margin-top:6px">${d}/${ts.length} tasks · <span class="badge">${esc(it.status)}</span></div>`;
+  }
+  return `<a class="card" href="#/item/${it.id}">
+    <div class="card-t">${it.pinned ? '<span class="pin">★</span>' : ''}${T.icon} ${esc(it.title || 'Untitled')}</div>
+    ${sub ? `<div class="card-s">${esc(sub)}</div>` : ''}
+    ${extra || `<div class="card-m">${tagsOf(it).slice(0, 4).map(t => `<span class="chip plain">#${esc(t)}</span>`).join('')}<span>${ago(it.updated)}</span></div>`}
+  </a>`;
+}
+
+function taskRow(t, showProject = true) {
+  const d = dueInfo(t.due), p = t.projectId && get(t.projectId);
+  return `<div class="row${t.done ? ' done' : ''}">
+    <input type="checkbox" data-act="toggle" data-id="${t.id}" ${t.done ? 'checked' : ''} aria-label="Done">
+    <span class="pr ${t.priority}" title="${t.priority} priority"></span>
+    <div class="t"><a href="#/item/${t.id}">${inline(esc(t.title || 'Untitled task'))}</a>
+      ${showProject && p ? `<div class="due">🚀 ${esc(p.title)}</div>` : ''}</div>
+    ${d ? `<span class="due ${t.done ? '' : d.cls}">${d.txt}</span>` : ''}
+  </div>`;
+}
+
+function captureBox(ph) {
+  return `<div class="capture"><textarea id="cap" placeholder="${ph}"></textarea><button class="btn pri" data-act="capture">Capture</button></div>
+  <div class="meta">Press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to save to Inbox</div>`;
+}
+
+function streak() {
+  const days = new Set(of('journal').filter(j => plain(j.body).length > 0 && j.body.trim() !== JOURNAL_TPL.trim()).map(j => j.date));
+  let d = ymd(), s = 0;
+  if (!days.has(d)) d = addDays(d, -1);
+  while (days.has(d)) { s++; d = addDays(d, -1); }
+  return s;
+}
+
+function home() {
+  const now = new Date(), h = now.getHours();
+  const greet = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  const t = ymd();
+  const dayN = Math.floor(now / 864e5);
+  const q = QUOTES[dayN % QUOTES.length];
+  const focus = of('task').filter(x => !x.done && x.due && x.due <= t).sort((a, b) => a.due.localeCompare(b.due));
+  const high = of('task').filter(x => !x.done && x.priority === 'high' && (!x.due || x.due > t));
+  const projects = of('project').filter(p => p.status === 'active');
+  const recent = sortRecent(db.items.filter(i => ['note', 'idea', 'link'].includes(i.type)).slice()).slice(0, 6);
+  const pool = db.items.filter(i => ['note', 'idea'].includes(i.type) && !i.pinned);
+  const redisc = pool.length ? pool[dayN % pool.length] : null;
+  const todayJ = of('journal').find(j => j.date === t);
+  return `
+    <h1>${greet}, ${OWNER} ✨</h1>
+    <p class="sub">${now.toLocaleDateString(undefined, {weekday:'long', day:'numeric', month:'long', year:'numeric'})}</p>
+    <div class="panel">${captureBox("What's on your mind?")}</div>
+    <div class="stats">
+      <a class="stat" href="#/inbox" style="color:inherit"><b>${of('inbox').length}</b><span>📥 In inbox</span></a>
+      <a class="stat" href="#/tasks" style="color:inherit"><b>${of('task').filter(x => !x.done).length}</b><span>✅ Open tasks</span></a>
+      <a class="stat" href="#/projects" style="color:inherit"><b>${projects.length}</b><span>🚀 Active projects</span></a>
+      <a class="stat" href="#/notes" style="color:inherit"><b>${of('note').length + of('idea').length}</b><span>📝 Notes & ideas</span></a>
+      <a class="stat" href="#/journal" style="color:inherit"><b>${streak()}🔥</b><span>📔 Journal streak</span></a>
+    </div>
+    <div class="grid g2">
+      <div class="panel"><h3>🎯 Today's focus <a class="more" href="#/tasks">All tasks →</a></h3>
+        ${focus.length || high.length ? focus.concat(high).slice(0, 8).map(x => taskRow(x)).join('') : '<p class="empty">Nothing due today. Enjoy the clarity 🎉</p>'}
+        ${quickTask()}
+      </div>
+      <div class="panel"><h3>🚀 Active projects <a class="more" href="#/projects">All →</a></h3>
+        ${projects.length ? `<div class="grid">${projects.slice(0, 4).map(card).join('')}</div>` : '<p class="empty">No active projects.</p>'}
+      </div>
+      <div class="panel"><h3>📔 Journal</h3>
+        <p class="quote">“${esc(q[0])}” — ${esc(q[1])}</p>
+        <div style="margin-top:14px"><button class="btn ${todayJ ? '' : 'pri'}" data-act="journal-today">${todayJ ? "Continue today's entry" : "Write today's entry"}</button></div>
+      </div>
+      <div class="panel"><h3>🔮 Rediscover</h3>
+        ${redisc ? card(redisc) : '<p class="empty">Write some notes and they will resurface here.</p>'}
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h3>🕘 Recently edited</h3>
+      ${recent.length ? `<div class="grid g3">${recent.map(card).join('')}</div>` : '<p class="empty">Nothing yet.</p>'}
+    </div>`;
+}
+
+function quickTask(projectId = '') {
+  return `<div style="display:flex;gap:8px;margin-top:12px"><input type="text" class="qtask" data-project="${projectId}" placeholder="+ Add a task and press Enter"></div>`;
+}
+
+function listView(type) {
+  const T = TYPES[type];
+  const q = ui.q.toLowerCase();
+  let items = sortRecent(of(type).slice());
+  if (q) items = items.filter(i => (i.title + ' ' + i.body + ' ' + (i.url || '')).toLowerCase().includes(q));
+  const desc = {note:'Evergreen knowledge worth keeping.', idea:'Sparks, hunches and what-ifs.', project:'Outcomes with a finish line.', link:'Articles, videos, books and tools.'}[type] || '';
+  let body;
+  if (type === 'project') {
+    const groups = ['active', 'on hold', 'done'];
+    body = groups.map(g => { const g_ = items.filter(p => p.status === g); return g_.length ? `<div class="sec" style="padding-left:0">${g}</div><div class="grid g3">${g_.map(card).join('')}</div>` : ''; }).join('') || '<p class="empty">No projects yet.</p>';
+  } else body = items.length ? `<div class="grid g3">${items.map(card).join('')}</div>` : `<p class="empty">${q ? 'No matches.' : `No ${T.plural.toLowerCase()} yet — create your first one.`}</p>`;
+  return `<div class="head"><div><h1>${T.icon} ${T.plural}</h1><p class="sub" style="margin:4px 0 0">${desc}</p></div>
+    <div style="display:flex;gap:8px"><input type="search" id="filter" placeholder="Filter…" value="${esc(ui.q)}" style="width:180px"><button class="btn pri" data-act="new" data-type="${type}">+ New ${T.label}</button></div></div>
+    ${body}`;
+}
+
+function tasksView() {
+  const t = ymd(), all = of('task');
+  const F = {
+    focus:   ['🎯 Focus',    all.filter(x => !x.done && x.due && x.due <= t)],
+    upcoming:['📅 Upcoming', all.filter(x => !x.done && x.due > t)],
+    nodate:  ['🌱 No date',  all.filter(x => !x.done && !x.due)],
+    open:    ['All open',    all.filter(x => !x.done)],
+    done:    ['✔ Done',      all.filter(x => x.done)]
+  };
+  const pw = {high:0, normal:1, low:2};
+  const list = F[ui.taskFilter][1].sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || pw[a.priority] - pw[b.priority]);
+  const projects = of('project').filter(p => p.status !== 'done');
+  return `<div class="head"><h1>✅ Tasks</h1></div>
+    <div class="panel" style="margin-bottom:16px">
+      <div class="fields" style="margin:0;align-items:flex-end">
+        <label class="grow">Task<input type="text" id="nt-title" placeholder="What needs doing? (use #tags)"></label>
+        <label>Due<input type="date" id="nt-due" value="${t}"></label>
+        <label>Priority<select id="nt-pr"><option value="normal">normal</option><option value="high">high</option><option value="low">low</option></select></label>
+        <label>Project<select id="nt-proj"><option value="">— none —</option>${projects.map(p => `<option value="${p.id}">${esc(p.title)}</option>`).join('')}</select></label>
+        <button class="btn pri" data-act="add-task" style="margin-bottom:1px">Add</button>
+      </div>
+    </div>
+    <div class="tabs" style="margin-bottom:12px">${Object.entries(F).map(([k, [l, a]]) => `<button class="${ui.taskFilter === k ? 'on' : ''}" data-act="tfilter" data-f="${k}">${l} <span style="opacity:.6">${a.length}</span></button>`).join('')}</div>
+    <div class="panel">${list.length ? list.map(x => taskRow(x)).join('') : '<p class="empty">Nothing here.</p>'}</div>`;
+}
+
+function journalView() {
+  const t = ymd(), entries = of('journal').sort((a, b) => b.date.localeCompare(a.date));
+  const has = new Set(entries.map(e => e.date));
+  let strip = '';
+  for (let i = 41; i >= 0; i--) { const d = addDays(t, -i); strip += `<a href="#" data-act="journal-day" data-date="${d}" class="${has.has(d) ? 'on' : ''}${d === t ? ' td' : ''}" title="${niceDate(d)}"></a>`; }
+  return `<div class="head"><div><h1>📔 Journal</h1><p class="sub" style="margin:4px 0 0">Reflect daily. Current streak: <b>${streak()} 🔥</b></p></div>
+    <div style="display:flex;gap:8px"><input type="date" id="jdate" value="${t}" style="width:160px"><button class="btn" data-act="journal-pick">Open</button><button class="btn pri" data-act="journal-today">Today's entry</button></div></div>
+    <div class="panel" style="margin-bottom:16px"><h3>Last 6 weeks</h3><div class="strip">${strip}</div></div>
+    ${entries.length ? `<div class="grid g3">${entries.map(card).join('')}</div>` : '<p class="empty">No entries yet. Start with today.</p>'}`;
+}
+
+function inboxView() {
+  const items = of('inbox').sort((a, b) => b.created - a.created);
+  return `<div class="head"><div><h1>📥 Inbox</h1><p class="sub" style="margin:4px 0 0">Capture fast. Process later into notes, tasks or ideas.</p></div></div>
+    <div class="panel" style="margin-bottom:16px">${captureBox('Dump a thought, link, or to-do…')}</div>
+    <div class="panel">${items.length ? items.map(i => `<div class="row"><div class="t">${inline(esc(i.title))}${i.body ? `<div class="due">${esc(plain(i.body).slice(0, 120))}</div>` : ''}<div class="due">${ago(i.created)}</div></div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn sm" data-act="convert" data-id="${i.id}" data-to="note">📝 Note</button>
+        <button class="btn sm" data-act="convert" data-id="${i.id}" data-to="task">✅ Task</button>
+        <button class="btn sm" data-act="convert" data-id="${i.id}" data-to="idea">💡 Idea</button>
+        <button class="btn sm" data-act="convert" data-id="${i.id}" data-to="link">🔗</button>
+        <button class="btn sm ghost danger" data-act="del" data-id="${i.id}" data-quiet="1" title="Delete">✕</button>
+      </div></div>`).join('') : '<p class="empty">Inbox zero 🧘 Your mind is clear.</p>'}</div>`;
+}
+
+function tagView(tag) {
+  const items = sortRecent(db.items.filter(i => tagsOf(i).includes(tag)));
+  return `<div class="head"><h1><span class="chip plain" style="font-size:22px;padding:2px 14px">#${esc(tag)}</span></h1><span class="sub" style="margin:0">${items.length} item${items.length === 1 ? '' : 's'}</span></div>
+    ${items.length ? `<div class="grid g3">${items.map(card).join('')}</div>` : '<p class="empty">Nothing tagged yet.</p>'}`;
+}
+
+function itemView(it) {
+  const T = TYPES[it.type];
+  const mode = ui.mode[it.id] || (it.body && it.type !== 'journal' ? 'preview' : 'write');
+  let fields = '';
+  if (it.type === 'task') {
+    const ps = of('project');
+    fields = `<div class="fields">
+      <label class="chk"><input type="checkbox" data-field="done" ${it.done ? 'checked' : ''}> Done</label>
+      <label>Due<input type="date" data-field="due" value="${esc(it.due)}"></label>
+      <label>Priority<select data-field="priority">${['high', 'normal', 'low'].map(p => `<option ${it.priority === p ? 'selected' : ''}>${p}</option>`).join('')}</select></label>
+      <label class="grow">Project<select data-field="projectId"><option value="">— none —</option>${ps.map(p => `<option value="${p.id}" ${it.projectId === p.id ? 'selected' : ''}>${esc(p.title)}</option>`).join('')}</select></label></div>`;
+  } else if (it.type === 'project') {
+    fields = `<div class="fields"><label>Status<select data-field="status">${['active', 'on hold', 'done'].map(s => `<option ${it.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label></div>`;
+  } else if (it.type === 'link') {
+    fields = `<div class="fields" style="align-items:flex-end"><label class="grow">URL<input type="url" data-field="url" value="${esc(it.url)}" placeholder="https://"></label>
+      ${it.url ? `<a class="btn" href="${esc(it.url)}" target="_blank" rel="noopener">Open ↗</a>` : ''}</div>`;
+  } else if (it.type === 'journal') {
+    fields = `<div class="fields" style="align-items:center"><span class="badge">${niceDate(it.date)}</span>
+      <button class="btn sm ghost" data-act="tpl" data-id="${it.id}">Insert prompts</button>
+      <button class="btn sm ghost" data-act="journal-day" data-date="${addDays(it.date, -1)}">← Prev day</button>
+      <button class="btn sm ghost" data-act="journal-day" data-date="${addDays(it.date, 1)}">Next day →</button></div>`;
+  }
+  const backs = it.title ? db.items.filter(o => o.id !== it.id && (o.body + ' ' + o.title).toLowerCase().includes('[[' + it.title.toLowerCase() + ']]')) : [];
+  let projTasks = '';
+  if (it.type === 'project') {
+    const ts = of('task').filter(t => t.projectId === it.id).sort((a, b) => a.done - b.done);
+    const d = ts.filter(t => t.done).length;
+    projTasks = `<div class="panel side-box"><h3>✅ Tasks <span class="badge">${d}/${ts.length}</span></h3>
+      <div class="prog" style="margin:0 0 10px"><i style="width:${ts.length ? Math.round(d / ts.length * 100) : 0}%"></i></div>
+      ${ts.map(t => taskRow(t, false)).join('') || '<p class="empty">No tasks yet.</p>'}${quickTask(it.id)}</div>`;
+  }
+  const tags = tagsOf(it);
+  const titleField = it.type === 'journal' ? `<h1 style="margin:6px 0 10px">📔 ${esc(it.title)}</h1>`
+    : `<input type="text" class="ed-title" data-field="title" value="${esc(it.title)}" placeholder="Untitled ${T.label.toLowerCase()}">`;
+  return `
+    <div class="ed-top">
+      <a class="btn sm ghost" href="#/${T.route}">← ${T.plural}</a>
+      <span class="badge">${T.icon} ${T.label}</span>
+      <span style="margin-left:auto"></span>
+      ${it.type !== 'journal' ? `<button class="btn sm ghost" data-act="pin" data-id="${it.id}" title="Pin">${it.pinned ? '★ Pinned' : '☆ Pin'}</button>` : ''}
+      <button class="btn sm ghost danger" data-act="del" data-id="${it.id}">🗑 Delete</button>
+    </div>
+    ${titleField}
+    ${fields}
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <div class="tabs"><button class="${mode === 'write' ? 'on' : ''}" data-act="mode" data-id="${it.id}" data-m="write">✏️ Write</button><button class="${mode === 'preview' ? 'on' : ''}" data-act="mode" data-id="${it.id}" data-m="preview">👁 Preview</button></div>
+      <span class="meta" style="margin:0 0 0 auto">Markdown · [[links]] · #tags · <kbd>Ctrl E</kbd> toggles</span>
+    </div>
+    ${mode === 'write' ? `<textarea class="body-ed" data-field="body" placeholder="Start writing… use # headings, - lists, - [ ] checklists, [[Note title]] links, #tags">${esc(it.body)}</textarea>`
+      : `<div class="md" data-id="${it.id}">${md(it.body)}</div>`}
+    ${tags.length ? `<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">${tags.map(t => `<button class="chip" data-act="tag" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
+    <div class="meta">Created ${ago(it.created)} · Updated ${ago(it.updated)}</div>
+    ${projTasks}
+    ${backs.length ? `<div class="panel side-box"><h3>🔁 Linked from (${backs.length})</h3><div class="grid g3">${backs.map(card).join('')}</div></div>` : ''}`;
+}
+
+/* ---------- actions ---------- */
+function openJournal(date) {
+  let j = of('journal').find(x => x.date === date);
+  if (!j) j = make('journal', {date, title:niceDate(date), body:JOURNAL_TPL});
+  ui.mode[j.id] = 'write';
+  go('#/item/' + j.id);
+}
+function capture() {
+  const el = $('#cap'); if (!el) return;
+  const v = el.value.trim(); if (!v) { el.focus(); return; }
+  const [first, ...rest] = v.split('\n');
+  make('inbox', {title:first, body:rest.join('\n').trim()});
+  el.value = ''; render(); setTimeout(() => $('#cap') && $('#cap').focus());
+}
+function addTask(title, extra) {
+  title = title.trim(); if (!title) return;
+  make('task', {title, ...extra}); render();
+}
+function openOrCreate(title) {
+  const ex = byTitle(title);
+  if (ex) return go('#/item/' + ex.id);
+  const it = make('note', {title}); ui.mode[it.id] = 'write'; go('#/item/' + it.id);
+}
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const a = el.dataset.act, id = el.dataset.id;
+  if (el.tagName === 'A' || el.tagName === 'BUTTON') e.preventDefault();
+  switch (a) {
+    case 'menu': $('#side').classList.toggle('open'); break;
+    case 'search': openPal(); break;
+    case 'capture': capture(); break;
+    case 'new': { const it = make(el.dataset.type); ui.mode[it.id] = 'write'; go('#/item/' + it.id); setTimeout(() => $('.ed-title') && $('.ed-title').focus(), 30); break; }
+    case 'toggle': { const t = get(id); t.done = el.checked; touch(t); save(true); setTimeout(render, 150); break; }
+    case 'pin': { const t = get(id); t.pinned = !t.pinned; touch(t); render(); break; }
+    case 'del': { const t = get(id); if (el.dataset.quiet || confirm(`Delete “${t.title || 'Untitled'}”? This can't be undone.`)) {
+        db.items = db.items.filter(i => i.id !== id);
+        if (t.type === 'project') db.items.forEach(i => { if (i.projectId === id) i.projectId = ''; });
+        save(true); el.dataset.quiet ? render() : go('#/' + TYPES[t.type].route); } break; }
+    case 'convert': { const t = get(id), to = el.dataset.to;
+        let extra = {};
+        if (to === 'task') extra = {done:false, due:'', priority:'normal', projectId:''};
+        if (to === 'link') { const m = (t.title + ' ' + t.body).match(/https?:\/\/\S+/); extra = {url:m ? m[0] : ''}; }
+        Object.assign(t, extra, {type:to}); touch(t); save(true);
+        if (to === 'task') render(); else { ui.mode[t.id] = 'write'; go('#/item/' + t.id); } break; }
+    case 'tag': go('#/tag/' + encodeURIComponent(el.dataset.tag)); break;
+    case 'wl': openOrCreate(el.dataset.wl.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'")); break;
+    case 'mode': ui.mode[id] = el.dataset.m; render(); if (el.dataset.m === 'write') setTimeout(() => $('.body-ed') && $('.body-ed').focus()); break;
+    case 'chk': { const box = el.closest('.md'), it = get(box.dataset.id), ln = +el.dataset.ln, L = it.body.split('\n');
+        L[ln] = L[ln].replace(/\[( |x|X)\]/, el.checked ? '[x]' : '[ ]'); it.body = L.join('\n'); touch(it); save(true); render(); break; }
+    case 'tfilter': ui.taskFilter = el.dataset.f; render(); break;
+    case 'add-task': addTask($('#nt-title').value, {due:$('#nt-due').value, priority:$('#nt-pr').value, projectId:$('#nt-proj').value}); setTimeout(() => $('#nt-title').focus()); break;
+    case 'journal-today': openJournal(ymd()); break;
+    case 'journal-day': openJournal(el.dataset.date); break;
+    case 'journal-pick': { const d = $('#jdate').value; if (d) openJournal(d); break; }
+    case 'tpl': { const it = get(id); it.body = (it.body.trim() ? it.body.trimEnd() + '\n\n' : '') + JOURNAL_TPL; touch(it); ui.mode[id] = 'write'; render(); break; }
+    case 'export': exportData(); break;
+    case 'import': $('#importFile').click(); break;
+    case 'theme': { const order = ['auto', 'light', 'dark']; db.settings.theme = order[(order.indexOf(db.settings.theme || 'auto') + 1) % 3]; save(true); render(); break; }
+  }
+});
+
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (el.id === 'filter') { ui.q = el.value; const pos = el.selectionStart; render(); const f = $('#filter'); f.focus(); f.setSelectionRange(pos, pos); return; }
+  const f = el.dataset.field; if (!f) return;
+  const r = route(); const it = get(r.arg); if (!it) return;
+  it[f] = el.type === 'checkbox' ? el.checked : el.value;
+  touch(it);
+});
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (el.dataset.field && el.tagName !== 'TEXTAREA' && el.type !== 'text') { save(true); render(); }
+});
+document.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === 'k') { e.preventDefault(); openPal(); return; }
+  if ((e.ctrlKey || e.metaKey) && k === 'enter' && e.target.id === 'cap') { e.preventDefault(); capture(); return; }
+  if ((e.ctrlKey || e.metaKey) && k === 'e') { const r = route(); if (r.name === 'item') { e.preventDefault(); const it = get(r.arg); const cur = ui.mode[it.id] || ($('.body-ed') ? 'write' : 'preview'); ui.mode[it.id] = cur === 'write' ? 'preview' : 'write'; render(); if (ui.mode[it.id] === 'write') $('.body-ed').focus(); } return; }
+  if (k === 'enter' && e.target.classList.contains('qtask')) { addTask(e.target.value, {projectId:e.target.dataset.project, due:e.target.dataset.project ? '' : ymd()}); setTimeout(() => { const q = document.querySelector('.qtask'); q && q.focus(); }); return; }
+  if (k === 'enter' && e.target.id === 'nt-title') { $('[data-act="add-task"]').click(); return; }
+  if (k === 'enter' && e.target.classList.contains('ed-title')) { e.preventDefault(); ui.mode[route().arg] = 'write'; render(); $('.body-ed') && $('.body-ed').focus(); }
+});
+
+/* ---------- command palette ---------- */
+let palSel = 0, palItems = [];
+function openPal() { $('#pal').classList.add('open'); const q = $('#palq'); q.value = ''; palRender(); q.focus(); }
+function closePal() { $('#pal').classList.remove('open'); }
+function palRender() {
+  const q = $('#palq').value.trim().toLowerCase();
+  const cmds = [
+    {icon:'📝', label:'New note', run:() => { const it = make('note', {title:$('#palq').value.trim()}); ui.mode[it.id] = 'write'; go('#/item/' + it.id); }},
+    {icon:'✅', label:'New task', run:() => { const v = $('#palq').value.trim(); v ? (make('task', {title:v, due:ymd()}), go('#/tasks')) : go('#/tasks'); }},
+    {icon:'💡', label:'New idea', run:() => { const it = make('idea', {title:$('#palq').value.trim()}); ui.mode[it.id] = 'write'; go('#/item/' + it.id); }},
+    {icon:'📔', label:"Today's journal", run:() => openJournal(ymd())},
+    {icon:'📥', label:'Capture to inbox', run:() => { const v = $('#palq').value.trim(); if (v) make('inbox', {title:v}); go('#/inbox'); }}
+  ];
+  const hits = (q ? db.items.filter(i => (i.title + ' ' + i.body + ' ' + (i.url || '')).toLowerCase().includes(q))
+    .sort((a, b) => ((b.title || '').toLowerCase().includes(q) - (a.title || '').toLowerCase().includes(q)) || b.updated - a.updated)
+    : sortRecent(db.items.filter(i => i.type !== 'task').slice())).slice(0, 25)
+    .map(i => ({icon:TYPES[i.type].icon, label:i.title || 'Untitled', meta:TYPES[i.type].label, run:() => go('#/item/' + i.id)}));
+  const c = q ? cmds.map(x => ({...x, label:x.label + (x.label.startsWith('New') || x.label.startsWith('Capture') ? ` “${$('#palq').value.trim()}”` : '')})) : cmds;
+  palItems = q ? hits.concat(c) : c.concat(hits);
+  palSel = 0;
+  $('#palr').innerHTML = palItems.map((x, i) => `<a href="#" data-i="${i}" class="${i === 0 ? 'sel' : ''}">${x.icon} ${esc(x.label)}<small>${esc(x.meta || 'Command')}</small></a>`).join('') || '<p class="empty" style="padding:12px">No results</p>';
+}
+$('#palq').addEventListener('input', palRender);
+$('#palq').addEventListener('keydown', e => {
+  if (e.key === 'Escape') return closePal();
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); palSel = (palSel + (e.key === 'ArrowDown' ? 1 : -1) + palItems.length) % palItems.length;
+    document.querySelectorAll('#palr a').forEach((a, i) => a.classList.toggle('sel', i === palSel)); document.querySelector('#palr a.sel')?.scrollIntoView({block:'nearest'}); }
+  if (e.key === 'Enter' && palItems[palSel]) { e.preventDefault(); const x = palItems[palSel]; closePal(); x.run(); }
+});
+$('#palr').addEventListener('click', e => { const a = e.target.closest('a[data-i]'); if (!a) return; e.preventDefault(); e.stopPropagation(); const x = palItems[+a.dataset.i]; closePal(); x.run(); });
+$('#pal').addEventListener('click', e => { if (e.target.id === 'pal') closePal(); });
+
+/* ---------- theme / backup ---------- */
+function applyTheme() { const t = db.settings?.theme || 'auto'; if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); }
+function themeIcon() { return {auto:'🌗 Auto', light:'☀️ Light', dark:'🌙 Dark'}[db.settings?.theme || 'auto']; }
+async function exportData() {
+  const name = `ayan-second-brain-${ymd()}.json`, json = JSON.stringify(db, null, 2);
+  const dl = window.claude && typeof window.claude.use === 'function' ? await claude.use('downloads') : null;
+  if (dl) { try { await dl.save({filename:name, data:json}); } catch (e) {} return; }
+  const blob = new Blob([json], {type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+$('#importFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { try { const d = JSON.parse(r.result); if (!Array.isArray(d.items)) throw 0;
+      if (confirm(`Replace your current brain with ${d.items.length} items from this backup?`)) { d.settings = d.settings || {theme:'auto'}; db = d; save(true); go('#/'); } }
+    catch (err) { alert('That file is not a valid Second Brain backup.'); } e.target.value = ''; };
+  r.readAsText(f);
+});
+
+db.settings = db.settings || {theme:'auto'};
+save(true);
+render();
+initCloud();
+})();
+</script>
+</body>
+</html>
