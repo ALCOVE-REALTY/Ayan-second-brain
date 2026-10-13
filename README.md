@@ -4,6 +4,9 @@ A personal work and knowledge system in a single HTML file. No install, no build
 It isn't tied to any one person: whoever opens it sets their own name, and their data stays private to them.
 
 ## Features
+- 🔔 **Reminders:** upcoming joinings, interviews, due and overdue tasks, birthdays, work anniversaries and probation reviews. Get them by email or WhatsApp, now or as a daily digest.
+- 🧑‍💼 **Hiring:** a candidate board (Applied, Screening, Interview, Offer, Hired). Add applicants straight from Gmail.
+- 👥 **People:** employee directory with onboarding and exit checklists. There is also an HR starter kit of SOPs, policies, letter templates and monthly routines.
 - 📧 **Mail:** your live Gmail (Inbox, Unread, Starred, Important, Sent, All mail, plus search and *Load more*). Turn any email into a task, note or inbox item.
 - 📥 **Inbox:** capture thoughts fast, then convert them into notes, tasks, ideas or links.
 - 📝 **Notes & 💡 Ideas:** Markdown, `[[wiki links]]` with backlinks, `#tags`, clickable checklists.

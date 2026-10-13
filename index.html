@@ -26,6 +26,17 @@
 :root[data-space="personal"]{--accent:#0d8a5f;--accent-weak:#e0f3ea}
 @media (prefers-color-scheme:dark){:root[data-space="personal"]:not([data-theme="light"]){--accent:#4cc38a;--accent-weak:#163329}}
 :root[data-theme="dark"][data-space="personal"]{--accent:#4cc38a;--accent-weak:#163329}
+.board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,1fr);gap:12px;overflow-x:auto;padding-bottom:8px}
+.col{background:var(--side);border-radius:12px;padding:10px;min-height:120px}
+.col h4{margin:2px 4px 10px;font-size:13px;display:flex;justify-content:space-between;color:var(--muted)}
+.mini{display:block;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;color:var(--text)}
+.mini:hover{border-color:var(--accent)}
+.mini b{display:block;font-size:14px}
+.mini .due{display:block}
+.mini .mv{display:flex;justify-content:space-between;margin-top:6px}
+.ptable .row{display:grid;grid-template-columns:2fr 1.4fr 1.2fr 1fr 1.1fr;gap:10px}
+.ptable .row.h{font-size:12px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em}
+@media (max-width:860px){.ptable .row{grid-template-columns:1fr 1fr}.ptable .row.h{display:none}}
 .tabs.spaces{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
 .tabs.spaces button{padding:5px 2px;font-size:12.5px;white-space:nowrap}
 *{box-sizing:border-box}
@@ -193,6 +204,15 @@ const KEY = 'ayan-second-brain-v1';
 const who = () => ((db && db.settings && db.settings.name) || '').trim();
 const firstName = () => who().split(/\s+/)[0] || '';
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+// Alcove HR master data (same lists as the New Joiner Toolkit)
+const LOCATIONS = ['Head Office', 'HO - Pre-Sales', 'HO-Purchase', 'HO-Marketing', 'HO-Sundarvan'];
+const COMPANIES = ['Alcove Realty', 'Alcove Developers LLP'];
+const EMP_TYPES = ['Permanent', 'Contractual', 'Trainee', 'Intern'];
+const HR_TOOLS = [
+  ['🎉 New Joiner Toolkit', 'https://claude.ai/artifact/5964bavmkazZXBiPadjRrx', 'Welcome card, welcome email, document checklist, announcement, Day-1 plan'],
+  ['📄 Appointment Letter Generator', 'https://claude.ai/artifact/EZ56wrRpT6TtDtx7csr7BM', 'Appointment letters']
+];
+const DEFAULT_HR_EMAIL = 'hr@alcoverealty.in';
 const TYPES = {
   inbox:   {label:'Inbox',   plural:'Inbox',    icon:'📥', route:'inbox'},
   note:    {label:'Note',    plural:'Notes',    icon:'📝', route:'notes'},
@@ -200,7 +220,9 @@ const TYPES = {
   project: {label:'Project', plural:'Projects', icon:'🚀', route:'projects'},
   task:    {label:'Task',    plural:'Tasks',    icon:'✅', route:'tasks'},
   journal: {label:'Journal', plural:'Journal',  icon:'📔', route:'journal'},
-  link:    {label:'Resource',plural:'Library',  icon:'🔗', route:'library'}
+  link:    {label:'Resource',plural:'Library',  icon:'🔗', route:'library'},
+  candidate:{label:'Candidate',plural:'Hiring', icon:'🧑‍💼', route:'hiring'},
+  employee:{label:'Employee', plural:'People',   icon:'👥', route:'people'}
 };
 const QUOTES = [
   ['Your mind is for having ideas, not holding them.','David Allen'],
@@ -275,6 +297,8 @@ function make(type, extra = {}) {
   if (type === 'task') Object.assign(it, {done:false, due:'', priority:'normal', projectId:'', ...extra});
   if (type === 'project') Object.assign(it, {status:'active', ...extra});
   if (type === 'link') Object.assign(it, {url:'', ...extra});
+  if (type === 'candidate') Object.assign(it, {stage:'applied', position:'', email:'', phone:'', source:'', interview:'', space:'work', ...extra});
+  if (type === 'employee') Object.assign(it, {designation:'', department:'', email:'', phone:'', joinDate:'', dob:'', status:'active', manager:'', space:'work', ...extra});
   db.items.push(it); save(true); return it;
 }
 const touch = it => { it.updated = Date.now(); save(); };
@@ -360,7 +384,7 @@ async function syncCloud() {
 /* ---------- Gmail (live, read via the viewer's claude.ai Gmail connector) ---------- */
 const GMAIL = 'Gmail';
 const inArtifact = !!(window.claude && typeof window.claude.use === 'function');
-const MAIL_TABS = {inbox:['📥 Inbox', 'in:inbox'], unread:['🔵 Unread', 'in:inbox is:unread'], starred:['⭐ Starred', 'is:starred'], important:['❗ Important', 'is:important'], sent:['📤 Sent', 'in:sent'], all:['📂 All mail', '-in:spam -in:trash']};
+const MAIL_TABS = {inbox:['📥 Inbox', 'in:inbox'], apps:['📄 Applications', '(subject:(application OR resume OR cv OR "job" OR position OR vacancy) OR filename:pdf) newer_than:60d -in:sent -in:spam -in:trash'], unread:['🔵 Unread', 'in:inbox is:unread'], starred:['⭐ Starred', 'is:starred'], important:['❗ Important', 'is:important'], sent:['📤 Sent', 'in:sent'], all:['📂 All mail', '-in:spam -in:trash']};
 const DENIED = ['needs_reauth', 'server_not_connected', 'selection_required', 'blocked_by_policy', 'approval_required', 'not_in_manifest', 'consent_required', 'not_granted', 'capability_disabled', 'capability_removed', 'user_changed'];
 let mcpApi, mailTab = 'inbox', mailQ = '';
 const watches = {};
@@ -453,6 +477,7 @@ function mailRow(t, key, compact) {
     <div class="mail-acts">
       <button class="btn sm" data-act="mail-to" data-to="task" data-key="${key}" data-tid="${esc(t.id)}" title="Make a task">✅ Task</button>
       ${compact ? '' : `<button class="btn sm" data-act="mail-to" data-to="note" data-key="${key}" data-tid="${esc(t.id)}" title="Save as a note">📝 Note</button>
+      <button class="btn sm" data-act="mail-to" data-to="candidate" data-key="${key}" data-tid="${esc(t.id)}" title="Add to the hiring board">🧑‍💼 Candidate</button>
       <button class="btn sm" data-act="mail-to" data-to="inbox" data-key="${key}" data-tid="${esc(t.id)}" title="Send to Inbox">📥</button>`}
     </div></div>`;
 }
@@ -480,6 +505,14 @@ function mailTo(key, tid, to) {
   const m = threadInfo(t);
   const body = `📧 **From:** ${m.sender}\n[Open in Gmail](${m.url})\n\n> ${m.snippet}\n\n#email`;
   if (to === 'task') { make('task', {title:m.subject, body, due:ymd(), priority:'normal', space:'work'}); flash('Added to Work tasks ✅'); }
+  else if (to === 'candidate') {
+    const addr = (m.sender.match(/[\w.+-]+@[\w-]+\.[\w.-]+/) || [''])[0];
+    const nm = m.sender.replace(/<.*>/, '').replace(/"/g, '').trim();
+    const name = nm && nm !== addr ? nm : addr.split('@')[0].replace(/[._\d]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+    const pos = (m.subject.match(/(?:position|post|role|vacancy)\s+(?:of|for)\s+(?:the\s+)?([^.,\-–|]+)/i) || m.subject.match(/(?:application|applying)\s+for\s+(?:the\s+)?([^.,\-–|]+)/i) || ['', ''])[1].replace(/\b(position|post|role)\b/ig, '').trim();
+    const it = make('candidate', {title:name || 'New candidate', email:addr, position:pos, source:'Email', body:`📧 **Applied by email:** ${m.subject}\n[Open in Gmail](${m.url})\n\n> ${m.snippet}\n\n#candidate`});
+    ui.mode[it.id] = 'write'; go('#/item/' + it.id);
+  }
   else if (to === 'inbox') { make('inbox', {title:'📧 ' + m.subject + ' — ' + m.sender, body:m.url, space:'work'}); flash('Sent to Inbox 📥'); }
   else { const it = make('note', {title:m.subject, body, space:'work'}); ui.mode[it.id] = 'write'; go('#/item/' + it.id); }
 }
@@ -574,6 +607,9 @@ function render() {
   else if (r.name === 'inbox') v.innerHTML = inboxView();
   else if (r.name === 'mail') v.innerHTML = mailView();
   else if (r.name === 'settings') v.innerHTML = settingsView();
+  else if (r.name === 'reminders') v.innerHTML = remindersView();
+  else if (r.name === 'hiring') v.innerHTML = hiringView();
+  else if (r.name === 'people') v.innerHTML = peopleView();
   else { const t = Object.keys(TYPES).find(k => TYPES[k].route === r.name); v.innerHTML = t ? listView(t) : home(); }
   if (inArtifact) {
     if (r.name === 'mail' && !watches.main) startMail('main');
@@ -596,6 +632,7 @@ function sidebar(r) {
     <button class="searchbtn" data-act="search">🔍 Search… <kbd>Ctrl K</kbd></button>
     <nav class="nav">
       ${link('', '🏠', 'Home')}
+      ${link('reminders', '🔔', 'Reminders', remCount())}
       ${link('inbox', '📥', 'Inbox', counts.inbox)}
       ${curSpace() !== 'personal' ? link('mail', '📧', 'Mail') : ''}
       <div class="sec">Knowledge</div>
@@ -606,6 +643,9 @@ function sidebar(r) {
       ${link('projects', '🚀', 'Projects', counts.projects)}
       ${link('tasks', '✅', 'Tasks', counts.tasks)}
       ${link('journal', '📔', 'Journal', counts.journal)}
+      ${curSpace() !== 'personal' ? `<div class="sec">HR</div>
+      ${link('hiring', '🧑‍💼', 'Hiring', of('candidate').filter(c => !['hired', 'rejected'].includes(c.stage)).length)}
+      ${link('people', '👥', 'People', of('employee').filter(e => e.status !== 'exited').length)}` : ''}
       <div class="sec">Workspace</div>
       ${link('settings', '⚙️', 'Settings & handover')}
     </nav>
@@ -622,6 +662,8 @@ function card(it) {
   const T = TYPES[it.type];
   let sub = plain(it.body).slice(0, 160);
   if (it.type === 'link' && it.url) sub = it.url.replace(/^https?:\/\//, '') + (sub ? ' — ' + sub : '');
+  if (it.type === 'candidate') sub = [it.position, STAGES[it.stage] && STAGES[it.stage][1]].filter(Boolean).join(' · ');
+  if (it.type === 'employee') sub = [it.designation, it.department, EMP_STATUS[it.status]].filter(Boolean).join(' · ');
   let extra = '';
   if (it.type === 'project') {
     const ts = of('task').filter(t => t.projectId === it.id), d = ts.filter(t => t.done).length;
@@ -677,6 +719,7 @@ function home() {
     ${who() ? '' : `<div class="panel" style="margin-bottom:16px"><h3>👋 Welcome! What should we call you?</h3>
       <div class="capture"><input type="text" id="setname" placeholder="Your name"><button class="btn pri" data-act="save-name">Save</button></div>
       <div class="meta">Shown on your dashboard and in handover notes. Change it anytime in ⚙️ Settings.</div></div>`}
+    ${remHomePanel()}
     <div class="panel">${captureBox("What's on your mind?")}</div>
     <div class="stats">
       <a class="stat" href="#/inbox" style="color:inherit"><b>${of('inbox').length}</b><span>📥 In inbox</span></a>
@@ -694,6 +737,7 @@ function home() {
         ${projects.length ? `<div class="grid">${projects.slice(0, 4).map(card).join('')}</div>` : '<p class="empty">No active projects.</p>'}
       </div>
       ${inArtifact && curSpace() !== 'personal' ? `<div class="panel" style="grid-column:1/-1"><h3>📧 Unread mail <a class="more" href="#/mail">Open mail →</a></h3><div id="mailhome"></div></div>` : ''}
+      ${curSpace() !== 'personal' ? hrHomePanel() : ''}
       <div class="panel"><h3>📔 Journal</h3>
         <p class="quote">“${esc(q[0])}” — ${esc(q[1])}</p>
         <div style="margin-top:14px"><button class="btn ${todayJ ? '' : 'pri'}" data-act="journal-today">${todayJ ? "Continue today's entry" : "Write today's entry"}</button></div>
@@ -794,12 +838,38 @@ function itemView(it) {
       <label class="chk"><input type="checkbox" data-field="done" ${it.done ? 'checked' : ''}> Done</label>
       <label>Due<input type="date" data-field="due" value="${esc(it.due)}"></label>
       <label>Priority<select data-field="priority">${['high', 'normal', 'low'].map(p => `<option ${it.priority === p ? 'selected' : ''}>${p}</option>`).join('')}</select></label>
+      <label>Repeat<select data-field="repeat">${[['', 'Does not repeat'], ['weekly', 'Weekly'], ['monthly', 'Monthly']].map(([v, l]) => `<option value="${v}" ${(it.repeat || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="grow">Project<select data-field="projectId"><option value="">— none —</option>${ps.map(p => `<option value="${p.id}" ${it.projectId === p.id ? 'selected' : ''}>${esc(p.title)}</option>`).join('')}</select></label></div>`;
   } else if (it.type === 'project') {
     fields = `<div class="fields"><label>Status<select data-field="status">${['active', 'on hold', 'done'].map(s => `<option ${it.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label></div>`;
   } else if (it.type === 'link') {
     fields = `<div class="fields" style="align-items:flex-end"><label class="grow">URL<input type="url" data-field="url" value="${esc(it.url)}" placeholder="https://"></label>
       ${it.url ? `<a class="btn" href="${esc(it.url)}" target="_blank" rel="noopener">Open ↗</a>` : ''}</div>`;
+  } else if (it.type === 'candidate') {
+    const inp = (f, l, t = 'text', ph = '') => `<label>${l}<input type="${t}" data-field="${f}" value="${esc(it[f] || '')}" placeholder="${ph}"></label>`;
+    fields = `<div class="fields">
+      <label>Stage<select data-field="stage">${Object.entries(STAGES).map(([k, [ic, l]]) => `<option value="${k}" ${it.stage === k ? 'selected' : ''}>${ic} ${l}</option>`).join('')}</select></label>
+      ${hrInp(it, 'position', 'Position', 'text', 'e.g. Site Engineer', 'dl-desig')}${inp('email', 'Email', 'email')}${inp('phone', 'Phone', 'tel')}
+      ${inp('source', 'Source', 'text', 'Email, Naukri, referral…')}<label>Interview<input type="datetime-local" data-field="interview" value="${esc(it.interview || '')}"></label>
+      <label>Joining date<input type="date" data-field="doj" value="${esc(it.doj || '')}"></label>${hrInp(it, 'location', 'Location', 'text', '', 'dl-loc')}
+      ${hrSel(it, 'company', 'Company', COMPANIES)}${hrSel(it, 'etype', 'Employment type', EMP_TYPES)}${hrDatalists()}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:-6px 0 14px">
+        <button class="btn sm" data-act="hr-insert" data-id="${it.id}" data-what="score">🎯 Add interview scorecard</button>
+        ${it.email ? `<a class="btn sm" href="mailto:${esc(it.email)}">✉️ Email</a>` : ''}
+        ${it.stage === 'hired' ? `<button class="btn sm pri" data-act="hr-hire" data-id="${it.id}">👥 Create employee record</button>` : ''}
+      </div>`;
+  } else if (it.type === 'employee') {
+    const inp = (f, l, t = 'text', ph = '') => `<label>${l}<input type="${t}" data-field="${f}" value="${esc(it[f] || '')}" placeholder="${ph}"></label>`;
+    fields = `<div class="fields">
+      <label>Status<select data-field="status">${Object.entries(EMP_STATUS).map(([k, l]) => `<option value="${k}" ${it.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      ${inp('empId', 'Employee ID', 'text', 'ALC-0000')}${hrInp(it, 'designation', 'Designation', 'text', '', 'dl-desig')}${inp('department', 'Department')}${inp('manager', 'Reports to')}
+      ${hrInp(it, 'location', 'Location', 'text', '', 'dl-loc')}${hrSel(it, 'company', 'Company', COMPANIES)}${hrSel(it, 'etype', 'Employment type', EMP_TYPES)}${inp('prob', 'Probation (months)', 'number', '6')}
+      ${inp('email', 'Email', 'email')}${inp('phone', 'Phone', 'tel')}${inp('joinDate', 'Joining date', 'date')}${inp('dob', 'Date of birth', 'date')}${hrDatalists()}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:-6px 0 14px">
+        <button class="btn sm" data-act="hr-insert" data-id="${it.id}" data-what="onboard">✅ Add onboarding checklist</button>
+        <button class="btn sm" data-act="hr-insert" data-id="${it.id}" data-what="exit">🚪 Add exit checklist</button>
+        ${it.email ? `<a class="btn sm" href="mailto:${esc(it.email)}">✉️ Email</a>` : ''}
+      </div>`;
   } else if (it.type === 'journal') {
     fields = `<div class="fields" style="align-items:center"><span class="badge">${niceDate(it.date)}</span>
       <button class="btn sm ghost" data-act="tpl" data-id="${it.id}">Insert prompts</button>
@@ -841,6 +911,240 @@ function itemView(it) {
     ${backs.length ? `<div class="panel side-box"><h3>🔁 Linked from (${backs.length})</h3><div class="grid g3">${backs.map(card).join('')}</div></div>` : ''}`;
 }
 
+/* ---------- HR: hiring, people, HR calendar, starter kit ---------- */
+const STAGES = {applied:['📨', 'Applied'], screening:['📞', 'Screening'], interview:['🗣️', 'Interview'], offer:['📝', 'Offer'], hired:['✅', 'Hired'], rejected:['❌', 'Rejected']};
+const EMP_STATUS = {onboarding:'🟡 Onboarding', probation:'🔵 Probation', active:'🟢 Active', notice:'🟠 Notice period', exited:'⚪ Exited'};
+const ONBOARD = "## ✅ Onboarding checklist\n- [ ] Offer letter accepted & signed\n- [ ] Documents collected (ID & address proof, PAN, photos, education & experience certificates, last payslips)\n- [ ] Bank details and PF / ESI (UAN) details\n- [ ] Appointment letter issued\n- [ ] Email ID & system access created\n- [ ] ID card & attendance enrolment\n- [ ] Induction & policy briefing ([[Leave Policy]], [[Code of Conduct]])\n- [ ] Introduced to team & reporting manager\n- [ ] Added to payroll\n- [ ] 30-day check-in\n- [ ] Probation review\n";
+const EXIT = "## 🚪 Exit checklist\n- [ ] Resignation received & acknowledged\n- [ ] Last working day confirmed (notice period)\n- [ ] Handover plan agreed with manager\n- [ ] Company assets returned (laptop, ID card, SIM, keys)\n- [ ] Email & system access revoked\n- [ ] Exit interview done\n- [ ] Full & final settlement processed\n- [ ] Relieving & experience letters issued\n- [ ] PF transfer / withdrawal guidance shared\n";
+const SCORE = "## 🎯 Interview scorecard\n**Round / interviewer:** \n**Date:** \n\n- Communication: /5\n- Role skills & knowledge: /5\n- Relevant experience: /5\n- Attitude & culture fit: /5\n- Current CTC: \n- Expected CTC: \n- Notice period: \n- **Recommendation:** Hire / Hold / Reject\n- Notes: \n";
+const addMonths = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setMonth(d.getMonth() + n); return ymd(d); };
+const nextOn = (md, from) => { const y = +from.slice(0, 4); const d = `${y}-${md}`; return d < from ? `${y + 1}-${md}` : d; };
+const nextDay = n => { const d = new Date(); return ymd(new Date(d.getFullYear(), d.getMonth() + (d.getDate() > n ? 1 : 0), n)); };
+function hrEvents(days = 30) {
+  const t = ymd(), end = addDays(t, days), out = [];
+  const emps = ofAll('employee'), hasEmp = n => emps.some(e => (e.title || '').toLowerCase() === (n || '').toLowerCase());
+  emps.filter(e => e.status !== 'exited' && vis(e) && e.joinDate && e.joinDate >= t && e.joinDate <= end).forEach(e =>
+    out.push({date:e.joinDate, icon:'🆕', kind:'joining', text:`Joining: ${e.title}${e.designation ? ', ' + e.designation : ''}${e.location ? ' (' + e.location + ')' : ''}`, id:e.id}));
+  ofAll('candidate').filter(c => c.doj && ['offer', 'hired'].includes(c.stage) && vis(c) && !hasEmp(c.title) && c.doj >= t && c.doj <= end).forEach(c =>
+    out.push({date:c.doj, icon:'🆕', kind:'joining', text:`Joining: ${c.title}${c.position ? ', ' + c.position : ''}${c.location ? ' (' + c.location + ')' : ''}${c.stage === 'offer' ? ' (offer stage)' : ''}`, id:c.id}));
+  emps.filter(e => e.status !== 'exited' && vis(e)).forEach(e => {
+    if (e.dob) { const d = nextOn(e.dob.slice(5), t); if (d <= end) out.push({date:d, icon:'🎂', kind:'birthday', text:`${e.title}'s birthday`, id:e.id}); }
+    if (e.joinDate) {
+      const d = nextOn(e.joinDate.slice(5), t), yrs = +d.slice(0, 4) - +e.joinDate.slice(0, 4);
+      if (yrs > 0 && d <= end) out.push({date:d, icon:'🎉', kind:'anniversary', text:`${e.title}: ${yrs} year${yrs > 1 ? 's' : ''} work anniversary`, id:e.id});
+      const pd = addMonths(e.joinDate, +e.prob || 6);
+      if (['onboarding', 'probation'].includes(e.status) && pd <= end && e.joinDate < t) out.push({date:pd < t ? t : pd, icon:'📋', kind:'probation', text:`${e.title}: probation review ${pd < t ? 'overdue' : 'due'}`, id:e.id});
+    }
+  });
+  ofAll('candidate').filter(c => c.interview && vis(c) && !['hired', 'rejected'].includes(c.stage)).forEach(c => {
+    const d = c.interview.slice(0, 10);
+    if (d >= t && d <= end) out.push({date:d, time:c.interview.slice(11, 16), icon:'🗓️', kind:'interview', text:`Interview ${c.interview.slice(11, 16)}: ${c.title}${c.position ? ' (' + c.position + ')' : ''}`, id:c.id});
+  });
+  return out.sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
+}
+// Everything worth a reminder: HR dates plus open tasks that are overdue or due soon.
+function allReminders(days = 7) {
+  const t = ymd(), end = addDays(t, days), out = hrEvents(days);
+  ofAll('task').filter(x => !x.done && x.due && x.due <= end && vis(x)).forEach(x => out.push({date:x.due < t ? t : x.due, overdue:x.due < t, icon:x.due < t ? '⚠️' : '✅', kind:'task',
+    text:(x.due < t ? `Overdue since ${shortDate(x.due)}: ` : '') + x.title + (x.priority === 'high' ? ' ❗' : ''), id:x.id}));
+  return out.sort((a, b) => a.date.localeCompare(b.date) || (b.overdue ? 1 : 0) - (a.overdue ? 1 : 0) || (a.time || '').localeCompare(b.time || ''));
+}
+function remBuckets(list) {
+  const t = ymd(), tm = addDays(t, 1);
+  return [['⚠️ Overdue', list.filter(r => r.overdue)], ['📍 Today', list.filter(r => r.date === t && !r.overdue)], ['➡️ Tomorrow', list.filter(r => r.date === tm)], ['🗓️ Coming up', list.filter(r => r.date > tm)]].filter(b => b[1].length);
+}
+function digestText(days = 7) {
+  const list = allReminders(days), name = firstName();
+  let s = `🔔 HR reminders for ${niceDate(ymd())}${name ? ' (' + name + ')' : ''}\n`;
+  if (!list.length) return s + '\nNothing due. Enjoy the clear day! 🎉';
+  remBuckets(list).forEach(([h, rs]) => { s += `\n${h.replace(/^\S+\s/, '').toUpperCase()}\n` + rs.map(r => `${r.icon} ${h.includes('Coming') ? shortDate(r.date) + ': ' : ''}${r.text}`).join('\n') + '\n'; });
+  return s + '\nFrom your Second Brain';
+}
+const remCount = () => allReminders(0).length;
+const evRow = e => `<div class="row"><span>${e.icon}</span><div class="t"><a href="#/item/${e.id}">${esc(e.text)}</a></div><span class="due ${e.date === ymd() ? 'today' : ''}">${e.date === ymd() ? 'Today' : shortDate(e.date)}</span></div>`;
+function hrHomePanel() {
+  const cands = of('candidate'), emps = of('employee');
+  if (!cands.length && !emps.length) return `<div class="panel" style="grid-column:1/-1"><h3>🧑‍💼 HR workspace</h3>
+    <p class="empty">Track candidates, employees, birthdays, work anniversaries, probation reviews and interviews in one place.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-act="hr-kit">🧰 Add HR starter kit</button><button class="btn" data-act="new" data-type="candidate">+ Candidate</button><button class="btn" data-act="new" data-type="employee">+ Employee</button></div></div>`;
+  const evs = hrEvents(30).slice(0, 8);
+  const pipe = Object.entries(STAGES).filter(([k]) => k !== 'rejected').map(([k, [ic, l]]) => `<a class="stat" href="#/hiring" style="color:inherit;padding:10px 12px"><b style="font-size:20px">${cands.filter(c => c.stage === k).length}</b><span>${ic} ${l}</span></a>`).join('');
+  return `<div class="panel" style="grid-column:1/-1"><h3>🧑‍💼 HR at a glance <a class="more" href="#/people">People (${emps.filter(e => e.status !== 'exited').length}) →</a></h3>
+    <div class="stats" style="margin:0 0 14px;grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">${pipe}</div>
+    <h3>📅 Next 30 days</h3>
+    ${evs.length ? evs.map(evRow).join('') : '<p class="empty">No birthdays, anniversaries, probation reviews or interviews coming up.</p>'}</div>`;
+}
+function hiringView() {
+  const all = of('candidate'), positions = [...new Set(all.map(c => c.position).filter(Boolean))].sort();
+  const list = ui.hirePos ? all.filter(c => c.position === ui.hirePos) : all, keys = Object.keys(STAGES);
+  const col = k => {
+    const i = keys.indexOf(k), cs = list.filter(c => (STAGES[c.stage] ? c.stage : 'applied') === k).sort((a, b) => b.updated - a.updated);
+    return `<div class="col"><h4><span>${STAGES[k][0]} ${STAGES[k][1]}</span><span>${cs.length}</span></h4>${cs.map(c => `<a class="mini" href="#/item/${c.id}">
+      <b>${esc(c.title || 'Unnamed')}</b><span class="due">${esc(c.position || '—')}${c.source ? ' · ' + esc(c.source) : ''}</span>
+      ${c.interview ? `<span class="due today">🗓️ ${esc(c.interview.replace('T', ' '))}</span>` : ''}
+      <span class="mv">${i > 0 ? `<button class="btn sm ghost" data-act="hr-move" data-id="${c.id}" data-dir="-1" title="Previous stage">←</button>` : '<span></span>'}${i < keys.length - 1 ? `<button class="btn sm ghost" data-act="hr-move" data-id="${c.id}" data-dir="1" title="Next stage">→</button>` : ''}</span></a>`).join('') || '<p class="empty" style="font-size:13px;padding:4px">—</p>'}</div>`;
+  };
+  return `<div class="head"><div><h1>🧑‍💼 Hiring</h1><p class="sub" style="margin:4px 0 0">${all.filter(c => !['hired', 'rejected'].includes(c.stage)).length} active candidates across ${positions.length} position${positions.length === 1 ? '' : 's'}. Use 🧑‍💼 Candidate in 📧 Mail to add applicants straight from email.</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><select id="hirepos" style="width:190px"><option value="">All positions</option>${positions.map(p => `<option ${ui.hirePos === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>
+    <button class="btn pri" data-act="new" data-type="candidate">+ New candidate</button></div></div>
+    <div class="board">${keys.map(col).join('')}</div>`;
+}
+function peopleView() {
+  const tabs = {active:'Current', onboarding:'Onboarding', probation:'Probation', notice:'Notice period', exited:'Exited', all:'All'};
+  const pt = ui.ptab || 'active', q = (ui.pq || '').toLowerCase(), all = of('employee');
+  const inTab = e => pt === 'all' || (pt === 'active' ? e.status !== 'exited' : e.status === pt);
+  const list = all.filter(inTab).filter(e => !q || [e.title, e.designation, e.department, e.phone, e.email, e.manager].join(' ').toLowerCase().includes(q)).sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+  const evs = hrEvents(30);
+  return `<div class="head"><div><h1>👥 People</h1><p class="sub" style="margin:4px 0 0">Employee directory, onboarding, probation and exits.</p></div>
+    <div style="display:flex;gap:8px"><input type="search" id="pfilter" placeholder="Search name, role, phone…" value="${esc(ui.pq || '')}" style="width:220px"><button class="btn pri" data-act="new" data-type="employee">+ New employee</button></div></div>
+    ${evs.length ? `<div class="panel" style="margin-bottom:16px"><h3>📅 Coming up in 30 days</h3>${evs.map(evRow).join('')}</div>` : ''}
+    <div class="tabs" style="margin-bottom:12px">${Object.entries(tabs).map(([k, l]) => `<button class="${pt === k ? 'on' : ''}" data-act="ptab" data-t="${k}">${l} <span style="opacity:.6">${all.filter(e => k === 'all' || (k === 'active' ? e.status !== 'exited' : e.status === k)).length}</span></button>`).join('')}</div>
+    <div class="panel ptable">${list.length ? `<div class="row h"><span>Name</span><span>Designation</span><span>Department</span><span>Joined</span><span>Phone</span></div>` + list.map(e => `<div class="row">
+      <div class="t"><a href="#/item/${e.id}"><b>${esc(e.title || 'Unnamed')}</b></a><div class="due">${EMP_STATUS[e.status] || ''}${e.email ? ' · ' + esc(e.email) : ''}</div></div>
+      <span>${esc(e.designation || '—')}</span><span>${esc(e.department || '—')}</span><span class="due">${e.joinDate ? shortDate(e.joinDate) + ' ' + e.joinDate.slice(0, 4) : '—'}</span>
+      <span>${e.phone ? `<a href="tel:${esc(e.phone)}">${esc(e.phone)}</a>` : '—'}</span></div>`).join('') : `<p class="empty">${q ? 'No matches.' : 'No employees here yet.'}</p>`}</div>`;
+}
+const hrInp = (it, f, l, t = 'text', ph = '', list = '') => `<label>${l}<input type="${t}" data-field="${f}" value="${esc(it[f] || '')}" placeholder="${ph}"${list ? ` list="${list}"` : ''}></label>`;
+const hrSel = (it, f, l, opts) => `<label>${l}<select data-field="${f}"><option value="">—</option>${opts.map(o => `<option ${it[f] === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`;
+function hrDatalists() {
+  const uniq = a => [...new Set(a.filter(Boolean))].sort();
+  const desig = uniq(ofAll('candidate').map(c => c.position).concat(ofAll('employee').map(e => e.designation)));
+  const locs = uniq(LOCATIONS.concat(ofAll('employee').map(e => e.location), ofAll('candidate').map(c => c.location)));
+  return `<datalist id="dl-desig">${desig.map(d => `<option value="${esc(d)}">`).join('')}</datalist><datalist id="dl-loc">${locs.map(d => `<option value="${esc(d)}">`).join('')}</datalist>`;
+}
+
+/* ---------- Reminders: dashboard + delivery to email (Gmail) and phone (WhatsApp) ---------- */
+const WA = 'Whatsapp';  // connector display name, exactly as claude.ai lists it
+let remStatus = '';
+const remRow = r => `<div class="row"><span>${r.icon}</span><div class="t"><a href="#/item/${r.id}">${esc(r.text)}</a></div><span class="due ${r.overdue ? 'over' : r.date === ymd() ? 'today' : ''}">${r.overdue ? 'Overdue' : r.date === ymd() ? 'Today' : r.date === addDays(ymd(), 1) ? 'Tomorrow' : shortDate(r.date)}</span></div>`;
+function connErr(e, svc) {
+  const c = e && e.code;
+  if (c === 'needs_reauth' || c === 'server_not_connected') return `${svc} isn't connected. Connect it in claude.ai Settings → Connectors.`;
+  if (c === 'not_in_manifest' || c === 'consent_required') return `${svc} access isn't allowed for this page yet. Try again and choose Allow.`;
+  if (c === 'blocked_by_policy') return `Your organisation blocks ${svc} for this page.`;
+  if (c === 'tool_error') return `${svc} said: ${e.message || 'error'}${svc === 'WhatsApp' ? ' (check that your WhatsApp is connected)' : ''}`;
+  return `Couldn't reach ${svc} (${c || 'error'}). Try again in a moment.`;
+}
+async function sendDigest(via, auto = false) {
+  const api = await getMcp();
+  if (!api) { if (!auto) alert('Sending works when this page is opened on claude.ai.'); return false; }
+  const text = digestText(7);
+  try {
+    if (via === 'email') {
+      const to = (db.settings.remindEmail || DEFAULT_HR_EMAIL).trim();
+      await api.callTool(GMAIL, 'send_message', {to:[to], subject:`🔔 HR reminders: ${niceDate(ymd())}`, body:text});
+      remStatus = `📧 Sent to ${to} at ${new Date().toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'})}`;
+    } else {
+      const ph = (db.settings.phone || '').replace(/\D/g, '');
+      if (!ph) { if (!auto) { alert('Add your WhatsApp number in ⚙️ Settings first.'); go('#/settings'); } return false; }
+      await api.callTool(WA, 'whatsapp_send_message', {to_number:ph, message:text});
+      remStatus = `📲 Sent to WhatsApp +${ph} at ${new Date().toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'})}`;
+    }
+    flash(remStatus); paintRemStatus(); return true;
+  } catch (e) {
+    remStatus = '⚠️ ' + connErr(e, via === 'email' ? 'Gmail' : 'WhatsApp'); paintRemStatus();
+    if (!auto) alert(remStatus);
+    return false;
+  }
+}
+function paintRemStatus() { const el = document.getElementById('remstatus'); if (el) el.textContent = remStatus; }
+// Daily digest: the first time the app opens each day (on any device), send today's reminders once.
+async function autoDigest() {
+  const s = db.settings, t = ymd();
+  if (!inArtifact || (!s.autoEmail && !s.autoWa) || s.lastDigest === t) return;
+  s.lastDigest = t; save(true);
+  if (s.autoEmail) await sendDigest('email', true);
+  if (s.autoWa) await sendDigest('wa', true);
+}
+async function waFill() {
+  const api = await getMcp();
+  if (!api) return alert('This works when the page is opened on claude.ai.');
+  try {
+    const r = await api.callTool(WA, 'whatsapp_status', {});
+    const p = r.payload || {}, d = p.data || p, num = d.number || '';
+    if (!num) return alert('No WhatsApp number found. Connect WhatsApp in claude.ai Settings → Connectors.');
+    const el = document.getElementById('setphone'); if (el) el.value = num;
+    flash(d.status && d.status !== 'connected' ? `Found +${num}, but WhatsApp is ${d.status}. Reconnect it to receive reminders.` : `Found +${num} ✓ Click Save profile`);
+  } catch (e) { alert(connErr(e, 'WhatsApp')); }
+}
+function remindersView() {
+  const days = ui.remDays || 7, list = allReminders(days), t = ymd(), s = db.settings;
+  const joins = hrEvents(30).filter(r => r.kind === 'joining'), ints = hrEvents(7).filter(r => r.kind === 'interview');
+  const overdue = list.filter(r => r.overdue).length, wishes = hrEvents(30).filter(r => r.kind === 'birthday' || r.kind === 'anniversary').length;
+  return `<div class="head"><div><h1>🔔 Reminders</h1><p class="sub" style="margin:4px 0 0">Joinings, interviews, tasks, birthdays, anniversaries and probation reviews, all in one place.</p></div>
+    <div class="tabs">${[[1, 'Today'], [7, '7 days'], [30, '30 days']].map(([d, l]) => `<button class="${days === d ? 'on' : ''}" data-act="remdays" data-d="${d}">${l}</button>`).join('')}</div></div>
+    <div class="stats">
+      <div class="stat"><b>${joins.length}</b><span>🆕 Joinings · 30 days</span></div>
+      <div class="stat"><b>${ints.length}</b><span>🗓️ Interviews · 7 days</span></div>
+      <div class="stat"><b>${allReminders(0).filter(r => r.date === t).length}</b><span>📍 Due today</span></div>
+      <div class="stat"><b style="${overdue ? 'color:var(--danger)' : ''}">${overdue}</b><span>⚠️ Overdue tasks</span></div>
+      <div class="stat"><b>${wishes}</b><span>🎂 Wishes · 30 days</span></div>
+    </div>
+    <div class="grid g2">
+      <div class="panel"><h3>🆕 Upcoming joinings <a class="more" href="#/people">People →</a></h3>${joins.length ? joins.map(remRow).join('') : '<p class="empty">No joinings in the next 30 days. Set a <b>Joining date</b> on a candidate in Offer/Hired, or on an employee.</p>'}</div>
+      <div class="panel"><h3>🗓️ Upcoming interviews <a class="more" href="#/hiring">Hiring →</a></h3>${ints.length ? ints.map(remRow).join('') : '<p class="empty">No interviews scheduled this week. Set the <b>Interview</b> date & time on a candidate.</p>'}</div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h3>📲 Get reminders on your phone & email</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="btn pri" data-act="send-digest" data-via="email">📧 Email me now</button>
+        <button class="btn pri" data-act="send-digest" data-via="wa">📲 WhatsApp me now</button>
+        <a class="btn ghost" href="#/settings">Change email / phone</a>
+      </div>
+      <label class="chk" style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="autoEmail" ${s.autoEmail ? 'checked' : ''}> Email me a daily digest at <b>${esc(s.remindEmail || DEFAULT_HR_EMAIL)}</b></label>
+      <label class="chk" style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="autoWa" ${s.autoWa ? 'checked' : ''}> WhatsApp me a daily digest at <b>${s.phone ? '+' + esc(s.phone.replace(/\D/g, '')) : '(add number in Settings)'}</b></label>
+      <div class="meta">The daily digest goes out once a day, the first time the app is opened that day (laptop or phone)${s.lastDigest ? ' · last sent ' + shortDate(s.lastDigest) : ''}. <span id="remstatus">${esc(remStatus)}</span></div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h3>📋 All reminders · ${days === 1 ? 'today' : 'next ' + days + ' days'}</h3>
+      ${list.length ? remBuckets(days === 1 ? allReminders(0) : list).map(([h, rs]) => `<div class="sec" style="padding-left:0">${h}</div>${rs.map(remRow).join('')}`).join('') : '<p class="empty">Nothing coming up. 🎉</p>'}</div>
+    <div class="panel" style="margin-top:16px"><h3>🧰 Alcove HR tools</h3>${HR_TOOLS.map(([n, u, d]) => `<div class="row"><div class="t"><a href="${u}" target="_blank" rel="noopener">${n} ↗</a><div class="due">${d}</div></div></div>`).join('')}</div>`;
+}
+function remHomePanel() {
+  const list = allReminders(1);
+  return `<div class="panel" style="margin-bottom:16px"><h3>🔔 Today & tomorrow <a class="more" href="#/reminders">All reminders →</a></h3>
+    ${list.length ? remBuckets(list).map(([h, rs]) => `<div class="sec" style="padding-left:0;padding-top:6px">${h}</div>${rs.slice(0, 6).map(remRow).join('')}`).join('') : '<p class="empty">Nothing due today or tomorrow. 🎉</p>'}</div>`;
+}
+
+function hire(c) {
+  const ex = ofAll('employee').find(e => (e.title || '').toLowerCase() === (c.title || '').toLowerCase());
+  if (ex) return go('#/item/' + ex.id);
+  const e = make('employee', {title:c.title, designation:c.position, email:c.email, phone:c.phone, joinDate:c.doj || ymd(), location:c.location || '', company:c.company || COMPANIES[0], etype:c.etype || 'Permanent', prob:'6', status:'onboarding', body:`Hired through [[${c.title}]] (candidate record).\n\n${ONBOARD}`});
+  go('#/item/' + e.id);
+}
+function repeatTask(t) {
+  if (!t.repeat || !t.done) return;
+  const base = t.due || ymd(), due = t.repeat === 'weekly' ? addDays(base, 7) : addMonths(base, 1);
+  if (ofAll('task').some(x => !x.done && x.title === t.title && x.due === due)) return;
+  make('task', {title:t.title, body:t.body, priority:t.priority, projectId:t.projectId, repeat:t.repeat, space:t.space, due});
+  flash(`Next one scheduled for ${shortDate(due)} 🔁`);
+}
+function hrKit() {
+  const W = 'work', n = (title, body) => ['note', title, body];
+  const docs = [
+    n('SOP: Recruitment Process', "From requisition to joining. #sop #recruitment\n\n1. Manpower requisition approved by department head & management\n2. Job description finalised: position, CTC range, location, reporting manager\n3. Opening posted (job portals, LinkedIn, referrals, consultants)\n4. CVs screened → shortlist → phone screening\n5. Interviews scheduled: HR round → department / technical round → final round\n6. Reference & background check\n7. Salary negotiation & approval\n8. Offer letter issued ([[Template: Offer Letter]]) → acceptance collected\n9. Pre-joining documents → joining date confirmed\n10. Day 1: follow [[SOP: Employee Onboarding]]\n\nTrack every candidate on the 🧑‍💼 Hiring board."),
+    n('SOP: Employee Onboarding', "Use for every new joiner. Open the employee's record in 👥 People and click *Add onboarding checklist* to track it per person. #sop #onboarding\n\n" + ONBOARD),
+    n('SOP: Employee Exit', "Use when someone resigns or is separated. Open their record in 👥 People and click *Add exit checklist*. #sop #exit\n\n" + EXIT),
+    n('Leave Policy', "#policy\n\n## Leave types & entitlement\n- Casual leave (CL): \n- Sick leave (SL): \n- Earned / privilege leave (EL/PL): \n- Other (maternity, bereavement, comp-off): \n\n## How to apply\n- \n\n## Approval\n- \n\n## Carry-forward & encashment\n- \n\n## Holiday list (this year)\n- "),
+    n('Attendance & Working Hours', "#policy\n\n## Office hours\n- \n\n## Late coming / half day rules\n- \n\n## Weekly off & site staff rules\n- \n\n## Attendance system & regularisation\n- "),
+    n('Code of Conduct', "#policy\n\n## Professional behaviour\n- \n\n## Dress code\n- \n\n## Confidentiality & data\n- \n\n## Anti-harassment (POSH) & grievance\n- Internal Committee contact: \n\n## Disciplinary process\n- See [[Template: Warning Letter]]"),
+    n('Template: Offer Letter', "#template\n\nDate: {date}\n\nTo,\n{Candidate name}\n{Address}\n\n**Subject: Offer of Employment: {Position}**\n\nDear {Candidate name},\n\nWe are pleased to offer you the position of **{Position}** in the {Department} department at {Company}, based at {Location}.\n\n- Date of joining: {DOJ}\n- Annual CTC: ₹{CTC} (break-up in Annexure A)\n- Reporting to: {Manager}\n- Probation period: {6} months\n\nPlease sign and return a copy of this letter as your acceptance by {date}.\n\nWe look forward to welcoming you to the team.\n\nRegards,\n{HR name}\nHuman Resources, {Company}"),
+    n('Template: Appointment Letter', "#template\n\nDate: {date}\n\nTo,\n{Employee name}\n\n**Subject: Letter of Appointment**\n\nDear {Employee name},\n\nFurther to your acceptance of our offer dated {offer date}, we are pleased to appoint you as **{Designation}** with effect from {DOJ}, on the following terms:\n\n1. **Compensation:** ₹{CTC} per annum, as per Annexure A.\n2. **Probation:** {6} months, after which your services may be confirmed in writing.\n3. **Working hours & leave:** as per [[Attendance & Working Hours]] and [[Leave Policy]].\n4. **Notice period:** {30} days during probation, {60} days after confirmation.\n5. **Confidentiality:** you will keep all company information confidential.\n\nPlease sign the duplicate copy as your acceptance.\n\nFor {Company},\n\n{Authorised signatory}"),
+    n('Template: Experience Letter', "#template\n\nDate: {date}\n\n**TO WHOM IT MAY CONCERN**\n\nThis is to certify that **{Employee name}** worked with {Company} as **{Designation}** from {DOJ} to {LWD}.\n\nDuring this period, we found {him/her/them} sincere and hard-working. We wish {him/her/them} all the best for the future.\n\nFor {Company},\n\n{HR name}\nHuman Resources"),
+    n('Template: Warning Letter', "#template\n\nDate: {date}\n\nTo,\n{Employee name}, {Designation}\n\n**Subject: Warning: {issue}**\n\nDear {Employee name},\n\nIt has been observed that on {date(s)} you {describe the issue factually}. This is in violation of [[Code of Conduct]].\n\nYou are advised to improve your conduct immediately. Any repetition may lead to stricter disciplinary action.\n\nPlease acknowledge receipt of this letter.\n\n{HR name}\nHuman Resources, {Company}"),
+    n('HR Contacts & Vendors', "Who to call for what. Update when anything changes. #hr\n\n- Payroll / accounts: \n- PF & ESI consultant: \n- Recruitment consultants / job portals: \n- Insurance (GMC / GPA): \n- Background verification: \n- IT (email, laptops, access): \n- Admin (ID cards, seating): \n- Legal / labour law advisor: ")
+  ];
+  let added = 0;
+  docs.forEach(([type, title, body]) => { if (!byTitle(title)) { make(type, {title, body, space:W}); added++; } });
+  let p = byTitle('Monthly HR Routine');
+  if (!p) {
+    p = make('project', {title:'Monthly HR Routine', status:'active', space:W, body:"Recurring HR work. These tasks repeat: tick one off and the next month's copy is created automatically. #hr"}); added++;
+    [['Attendance closing & leave reconciliation', 1, 'high'], ['Birthday & work-anniversary wishes for the month', 1, 'low'], ['Monthly HR MIS report to management', 5, 'normal'],
+     ['PF & ESI challan payment (due by 15th)', 12, 'high'], ['Share payroll inputs with accounts', 25, 'high'], ['Review open positions & hiring pipeline', 28, 'normal']]
+      .forEach(([title, day, priority]) => make('task', {title, due:nextDay(day), priority, projectId:p.id, repeat:'monthly', space:W}));
+  }
+  flash(added ? `Added ${added} HR items 🧰` : 'You already have the HR starter kit ✓');
+  render();
+}
+
 /* ---------- settings & handover ---------- */
 const isPrivate = i => i.type === 'journal' || spaceOf(i) === 'personal';
 function settingsView() {
@@ -851,7 +1155,10 @@ function settingsView() {
       <div class="fields" style="margin:0">
         <label class="grow">Your name<input type="text" id="setname" value="${esc(who())}" placeholder="Your name"></label>
         <label class="grow">Role / team<input type="text" id="setrole" value="${esc(db.settings.role || '')}" placeholder="e.g. HR Executive"></label>
+        <label class="grow">Reminder email<input type="email" id="setemail" value="${esc(db.settings.remindEmail || DEFAULT_HR_EMAIL)}"></label>
+        <label class="grow">WhatsApp number (with country code)<input type="tel" id="setphone" value="${esc(db.settings.phone || '')}" placeholder="91XXXXXXXXXX"></label>
       </div>
+      ${inArtifact ? '<button class="btn sm ghost" data-act="wa-fill" style="margin-top:6px">📲 Use my connected WhatsApp number</button>' : ''}
       <div style="margin-top:12px"><button class="btn pri" data-act="save-name">Save profile</button></div>
     </div>
     <div class="panel"><h3>💾 Backup</h3>
@@ -871,6 +1178,10 @@ function settingsView() {
         <button class="btn pri" data-act="handover-note">📝 1. Write handover note</button>
         <button class="btn pri" data-act="export-handover">⬇ 2. Export for handover</button>
       </div>
+    </div>
+    <div class="panel" style="grid-column:1/-1"><h3>🧰 HR starter kit</h3>
+      <p class="sub" style="margin:0 0 12px">Adds ready-to-edit SOPs (recruitment, onboarding, exit), policy pages, letter templates (offer, appointment, experience, warning) and a monthly HR routine project. Anything you already have is skipped.</p>
+      <button class="btn pri" data-act="hr-kit">🧰 Add HR starter kit</button>
     </div>
     <div class="panel" style="grid-column:1/-1"><h3>📥 Taking over from someone?</h3>
       <p class="sub" style="margin:0 0 12px">Import the handover file you were given. Their items are <b>added</b> to yours. Nothing of yours is replaced.</p>
@@ -911,6 +1222,12 @@ async function handoverNote() {
   b += `## 📝 Key notes\n${notes.map(n => `- [[${n.title || 'Untitled'}]]`).join('\n') || '- None'}\n\n`;
   const links = ofAll('link').filter(l => !isPrivate(l));
   b += `## 🔗 Useful links\n${links.map(l => `- [${l.title || l.url}](${l.url})`).join('\n') || '- None'}\n\n`;
+  const cands = ofAll('candidate').filter(c => !['hired', 'rejected'].includes(c.stage) && !isPrivate(c));
+  if (cands.length) b += `## 🧑‍💼 Hiring pipeline\n${Object.keys(STAGES).filter(s => !['hired', 'rejected'].includes(s)).map(s => { const cs = cands.filter(c => c.stage === s); return cs.length ? `**${STAGES[s][1]}**\n${cs.map(c => `- [[${c.title}]]${c.position ? ' — ' + c.position : ''}${c.interview ? ' (interview ' + c.interview.replace('T', ' ') + ')' : ''}`).join('\n')}` : ''; }).filter(Boolean).join('\n\n')}\n\n`;
+  const emps = ofAll('employee').filter(e => ['onboarding', 'probation', 'notice'].includes(e.status) && !isPrivate(e));
+  if (emps.length) b += `## 👥 People needing action\n${emps.map(e => `- [[${e.title}]] — ${EMP_STATUS[e.status]}${e.designation ? ', ' + e.designation : ''}`).join('\n')}\n\n`;
+  const evs = hrEvents(45);
+  if (evs.length) b += `## 📅 HR dates coming up (next 45 days)\n${evs.map(e => `- ${shortDate(e.date)}: ${e.text}`).join('\n')}\n\n`;
   b += mailSec;
   if (emailTasks.length) b += `## 📨 Emails still being worked on\n${emailTasks.map(i => `- [[${i.title || 'Untitled'}]]`).join('\n')}\n\n`;
   const inbox = ofAll('inbox').filter(i => !isPrivate(i));
@@ -962,7 +1279,20 @@ document.addEventListener('click', e => {
     case 'search': openPal(); break;
     case 'capture': capture(); break;
     case 'new': { const it = make(el.dataset.type); ui.mode[it.id] = 'write'; go('#/item/' + it.id); setTimeout(() => $('.ed-title') && $('.ed-title').focus(), 30); break; }
-    case 'toggle': { const t = get(id); t.done = el.checked; touch(t); save(true); setTimeout(render, 150); break; }
+    case 'toggle': { const t = get(id); t.done = el.checked; touch(t); save(true); repeatTask(t); setTimeout(render, 150); break; }
+    case 'hr-kit': hrKit(); break;
+    case 'remdays': ui.remDays = +el.dataset.d; render(); break;
+    case 'send-digest': sendDigest(el.dataset.via); break;
+    case 'wa-fill': waFill(); break;
+    case 'hr-move': { const c = get(id), keys = Object.keys(STAGES), i = Math.max(0, keys.indexOf(c.stage));
+      c.stage = keys[Math.min(keys.length - 1, Math.max(0, i + +el.dataset.dir))]; touch(c); save(true); render();
+      if (c.stage === 'hired') flash('Hired 🎉 Open the card to create their employee record'); break; }
+    case 'hr-hire': hire(get(id)); break;
+    case 'hr-insert': { const it = get(id), txt = {onboard:ONBOARD, exit:EXIT, score:SCORE}[el.dataset.what];
+      it.body = (it.body.trim() ? it.body.trimEnd() + '\n\n' : '') + txt;
+      if (el.dataset.what === 'exit' && it.status !== 'exited') it.status = 'notice';
+      touch(it); save(true); ui.mode[id] = 'preview'; render(); break; }
+    case 'ptab': ui.ptab = el.dataset.t; render(); break;
     case 'pin': { const t = get(id); t.pinned = !t.pinned; touch(t); render(); break; }
     case 'del': { const t = get(id); if (el.dataset.quiet || confirm(`Delete “${t.title || 'Untitled'}”? This can't be undone.`)) {
         db.items = db.items.filter(i => i.id !== id);
@@ -1001,6 +1331,9 @@ document.addEventListener('click', e => {
       const n = $('#setname'), r = $('#setrole');
       if (n) db.settings.name = n.value.trim();
       if (r) db.settings.role = r.value.trim();
+      const em = $('#setemail'), ph = $('#setphone');
+      if (em) db.settings.remindEmail = em.value.trim();
+      if (ph) db.settings.phone = ph.value.replace(/\D/g, '');
       save(true); render(); flash('Profile saved ✓'); break; }
     case 'wipe':
       if (prompt('This deletes every item. Type DELETE to confirm.') === 'DELETE') { db.items = []; save(true); go('#/'); }
@@ -1012,7 +1345,7 @@ document.addEventListener('click', e => {
 
 document.addEventListener('input', e => {
   const el = e.target;
-  if (el.id === 'filter') { ui.q = el.value; const pos = el.selectionStart; render(); const f = $('#filter'); f.focus(); f.setSelectionRange(pos, pos); return; }
+  if (el.id === 'filter' || el.id === 'pfilter') { el.id === 'filter' ? ui.q = el.value : ui.pq = el.value; const id = el.id, pos = el.selectionStart; render(); const f = document.getElementById(id); f.focus(); f.setSelectionRange(pos, pos); return; }
   const f = el.dataset.field; if (!f) return;
   const r = route(); const it = get(r.arg); if (!it) return;
   it[f] = el.type === 'checkbox' ? el.checked : el.value;
@@ -1020,7 +1353,17 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const el = e.target;
-  if (el.dataset.field && el.tagName !== 'TEXTAREA' && el.type !== 'text') { save(true); render(); }
+  if (el.id === 'hirepos') { ui.hirePos = el.value; render(); return; }
+  if (el.id === 'autoEmail' || el.id === 'autoWa') {
+    db.settings[el.id] = el.checked; save(true); render();
+    if (el.checked) flash(el.id === 'autoEmail' ? 'Daily email digest on ✓' : 'Daily WhatsApp digest on ✓');
+    return;
+  }
+  if (el.dataset.field && el.tagName !== 'TEXTAREA' && el.type !== 'text') {
+    save(true);
+    if (el.dataset.field === 'done') { const it = get(route().arg); if (it) repeatTask(it); }
+    render();
+  }
 });
 document.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
@@ -1089,7 +1432,7 @@ $('#importFile').addEventListener('change', e => {
 db.settings = db.settings || {theme:'auto'};
 save(true);
 render();
-initCloud();
+initCloud().then(autoDigest);
 })();
 </script>
 </body>
