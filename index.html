@@ -267,7 +267,37 @@ const touch = it => { it.updated = Date.now(); save(); };
 /* ---------- cloud sync (when opened as a claude.ai artifact) ---------- */
 // Each item is its own private doc under data/users/<you>/; settings live on the parent doc.
 let cloud = null, synced = new Map(), syncing = false, again = false, cloudErr = '';
-const snapshot = () => { const m = new Map(db.items.map(i => [i.id, JSON.stringify(i)])); m.set('__settings', JSON.stringify(db.settings || {})); return m; };
+const canon = o => JSON.stringify(Object.keys(o).sort().reduce((a, k) => (a[k] = o[k], a), {}));
+const snapshot = () => { const m = new Map(db.items.map(i => [i.id, canon(i)])); m.set('__settings', canon(db.settings || {})); return m; };
+// Live updates: apply edits made on other devices, unless this device has unsynced edits to the same item.
+function listenCloud() {
+  cloud.col.limit(1000).onSnapshot(qs => {
+    if (qs.metadata.hasPendingWrites) return;
+    let changed = false;
+    for (const ch of qs.docChanges()) {
+      const id = ch.doc.id, local = db.items.find(i => i.id === id), lj = local ? canon(local) : undefined;
+      if (lj !== synced.get(id)) continue;
+      if (ch.type === 'removed') {
+        if (local) { db.items = db.items.filter(i => i !== local); synced.delete(id); changed = true; }
+      } else {
+        const data = {...ch.doc.data()}, dj = canon(data);
+        if (dj === lj) continue;
+        if (local) { Object.keys(local).forEach(k => delete local[k]); Object.assign(local, data); } else db.items.push(data);
+        synced.set(id, dj); changed = true;
+      }
+    }
+    if (changed) { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {} softRender(); }
+  }, e => { cloudErr = e && e.code || 'error'; const s = document.getElementById('syncstat'); if (s) s.innerHTML = syncLabel(); });
+}
+// Don't yank the page out from under someone mid-typing: refresh the sidebar now, the view on their next blur.
+let renderLater = false;
+function softRender() {
+  const a = document.activeElement;
+  if (a && a.closest && a.closest('#view') && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !['checkbox', 'button'].includes(a.type)))) {
+    $('#side').innerHTML = sidebar(route()); renderLater = true;
+  } else render();
+}
+document.addEventListener('focusout', () => { if (renderLater) { renderLater = false; setTimeout(() => { const a = document.activeElement; if (!a || !a.closest || !a.closest('#view') || a.tagName === 'BUTTON' || a === document.body) render(); else renderLater = true; }, 0); } });
 async function initCloud() {
   if (!window.claude || typeof window.claude.use !== 'function') return;
   try {
@@ -284,6 +314,7 @@ async function initCloud() {
       synced = snapshot();
       try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {}
     }
+    listenCloud();
     render();
   } catch (e) { cloudErr = e && e.code || 'error'; render(); }
 }
@@ -343,7 +374,7 @@ async function watchQ(key, query, size) {
       w.status = 'error';
     }
     paintMail();
-  }, {refetchInterval:120000});
+  }, {refetchInterval:60000});
 }
 async function retryMail(key) {
   const w = watches[key], api = await getMcp(); if (!w || !api) return;
@@ -404,7 +435,7 @@ function mailBody(key, compact) {
   if (!w) return `<p class="empty">See your latest emails here and turn them into tasks or notes in one click.</p><button class="btn pri" data-act="mail-start" data-key="${key}">Connect Gmail</button>`;
   if (w.status === 'unavailable') return '<p class="empty">Mail isn\'t available in this view.</p>';
   let out = w.err ? mailErr(w.err, key) : '';
-  if (w.threads.length) out += w.threads.map(t => mailRow(t, key, compact)).join('') + (w.at ? `<div class="meta">Updated ${ago(w.at)} · refreshes every 2 min</div>` : '');
+  if (w.threads.length) out += w.threads.map(t => mailRow(t, key, compact)).join('') + (w.at ? `<div class="meta">Updated ${ago(w.at)} · refreshes every minute</div>` : '');
   else if (w.status === 'loading') out += '<p class="empty">Loading mail…</p>';
   else if (!w.err) out += `<p class="empty">${compact ? 'No unread mail 🎉' : 'No emails found.'}</p>`;
   return out;
@@ -430,7 +461,7 @@ function mailView() {
     <div class="panel" id="mailbox"></div>`;
 }
 
-const syncLabel = () => cloud ? (cloudErr ? '⚠️ Sync issue — saved on this device' : '☁️ Synced to your account') : '💾 Saved on this device';
+const syncLabel = () => cloud ? (cloudErr ? '⚠️ Sync issue — saved on this device' : '☁️ Live-synced to your account') : '💾 Saved on this device';
 
 function seed() {
   const t = ymd(), n = Date.now();
