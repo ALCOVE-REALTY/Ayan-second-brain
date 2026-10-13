@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ayan's Second Brain</title>
+<title>Second Brain</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
 <style>
 :root{
@@ -184,7 +184,10 @@ textarea:focus,input:focus,select:focus{border-color:var(--accent);box-shadow:0 
 <script>
 (() => {
 const KEY = 'ayan-second-brain-v1';
-const OWNER = 'Ayan';
+// Whoever uses this sets their own name in Settings — nothing about the owner is hard-coded.
+const who = () => ((db && db.settings && db.settings.name) || '').trim();
+const firstName = () => who().split(/\s+/)[0] || '';
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const TYPES = {
   inbox:   {label:'Inbox',   plural:'Inbox',    icon:'📥', route:'inbox'},
   note:    {label:'Note',    plural:'Notes',    icon:'📝', route:'notes'},
@@ -345,7 +348,7 @@ async function syncCloud() {
 /* ---------- Gmail (live, read via the viewer's claude.ai Gmail connector) ---------- */
 const GMAIL = 'Gmail';
 const inArtifact = !!(window.claude && typeof window.claude.use === 'function');
-const MAIL_TABS = {inbox:['📥 Inbox', 'in:inbox'], unread:['🔵 Unread', 'in:inbox is:unread'], starred:['⭐ Starred', 'is:starred'], important:['❗ Important', 'in:inbox is:important']};
+const MAIL_TABS = {inbox:['📥 Inbox', 'in:inbox'], unread:['🔵 Unread', 'in:inbox is:unread'], starred:['⭐ Starred', 'is:starred'], important:['❗ Important', 'is:important'], sent:['📤 Sent', 'in:sent'], all:['📂 All mail', '-in:spam -in:trash']};
 const DENIED = ['needs_reauth', 'server_not_connected', 'selection_required', 'blocked_by_policy', 'approval_required', 'not_in_manifest', 'consent_required', 'not_granted', 'capability_disabled', 'capability_removed', 'user_changed'];
 let mcpApi, mailTab = 'inbox', mailQ = '';
 const watches = {};
@@ -357,7 +360,7 @@ async function watchQ(key, query, size) {
   try { localStorage.setItem(KEY + '-mail', '1'); } catch (e) {}
   const prev = watches[key];
   if (prev && prev.unsub) prev.unsub();
-  const w = watches[key] = {query, size, status:'loading', threads:prev && prev.query === query ? prev.threads : [], err:null, at:0, unsub:null};
+  const w = watches[key] = {query, size, status:'loading', threads:prev && prev.query === query ? prev.threads : [], more:[], next:'', err:null, at:0, unsub:null};
   paintMail();
   const api = await getMcp();
   if (watches[key] !== w) return;
@@ -367,6 +370,7 @@ async function watchQ(key, query, size) {
     if (ev.type === 'data') {
       const p = ev.result.payload || {};
       w.threads = Array.isArray(p.threads) ? p.threads : []; w.err = null; w.status = 'ok';
+      if (!w.more.length) w.next = p.nextPageToken || '';
       w.at = (ev.result.cache && ev.result.cache.storedAt) || Date.now();
     } else {
       w.err = ev.error || {code:'upstream_error'};
@@ -385,6 +389,17 @@ async function retryMail(key) {
   } catch (e) { w.err = e || {code:'upstream_error'}; if (DENIED.includes(w.err.code)) w.threads = []; w.status = 'error'; }
   paintMail();
 }
+async function loadMoreMail() {
+  const w = watches.main, api = await getMcp(); if (!w || !api || !w.next || w.loadingMore) return;
+  w.loadingMore = true; paintMail();
+  try {
+    const r = await api.callTool(GMAIL, 'search_threads', {query:w.query, pageSize:50, pageToken:w.next});
+    const p = r.payload || {};
+    if (watches.main === w) { w.more = w.more.concat(Array.isArray(p.threads) ? p.threads : []); w.next = p.nextPageToken || ''; }
+  } catch (e) { w.err = e || {code:'upstream_error'}; }
+  w.loadingMore = false; paintMail();
+}
+const allThreads = w => { const seen = new Set(); return w.threads.concat(w.more || []).filter(t => t && !seen.has(t.id) && seen.add(t.id)); };
 function mailErr(e, key) {
   const retry = `<button class="btn sm" data-act="mail-retry" data-key="${key}">Try again</button>`;
   const msg = {
@@ -435,7 +450,10 @@ function mailBody(key, compact) {
   if (!w) return `<p class="empty">See your latest emails here and turn them into tasks or notes in one click.</p><button class="btn pri" data-act="mail-start" data-key="${key}">Connect Gmail</button>`;
   if (w.status === 'unavailable') return '<p class="empty">Mail isn\'t available in this view.</p>';
   let out = w.err ? mailErr(w.err, key) : '';
-  if (w.threads.length) out += w.threads.map(t => mailRow(t, key, compact)).join('') + (w.at ? `<div class="meta">Updated ${ago(w.at)} · refreshes every minute</div>` : '');
+  const list = allThreads(w);
+  if (list.length) out += list.map(t => mailRow(t, key, compact)).join('')
+    + (!compact && w.next ? `<div style="text-align:center;margin-top:12px"><button class="btn" data-act="mail-more"${w.loadingMore ? ' disabled' : ''}>${w.loadingMore ? 'Loading…' : 'Load more emails'}</button></div>` : '')
+    + (w.at ? `<div class="meta">${compact ? '' : list.length + ' conversations shown · '}Updated ${ago(w.at)} · refreshes every minute</div>` : '');
   else if (w.status === 'loading') out += '<p class="empty">Loading mail…</p>';
   else if (!w.err) out += `<p class="empty">${compact ? 'No unread mail 🎉' : 'No emails found.'}</p>`;
   return out;
@@ -446,7 +464,7 @@ function paintMail() {
 }
 function startMail(key) { key === 'home' ? watchQ('home', 'in:inbox is:unread', 6) : watchQ('main', mainQuery(), 25); }
 function mailTo(key, tid, to) {
-  const w = watches[key], t = w && w.threads.find(x => x.id === tid); if (!t) return;
+  const w = watches[key], t = w && allThreads(w).find(x => x.id === tid); if (!t) return;
   const m = threadInfo(t);
   const body = `📧 **From:** ${m.sender}\n[Open in Gmail](${m.url})\n\n> ${m.snippet}\n\n#email`;
   if (to === 'task') { make('task', {title:m.subject, body, due:ymd(), priority:'normal'}); flash('Added to tasks ✅'); }
@@ -469,7 +487,7 @@ function seed() {
   const mk = (o, i) => ({id:uid(), tags:[], pinned:false, body:'', created:n - i * 3600e3, updated:n - i * 3600e3, ...o});
   return {settings:{theme:'auto'}, items:[
     mk({type:'note', pinned:true, title:'Welcome to your Second Brain',
-      body:"# Hi " + OWNER + " 👋\n\nThis is your personal knowledge system — a place to **capture**, **organize**, **distill** and **express** everything that matters.\n\n## How to use it\n- 📥 **Inbox** — dump any thought fast. Sort it later.\n- 📝 **Notes** — evergreen knowledge you want to keep.\n- 💡 **Ideas** — sparks worth exploring.\n- 🚀 **Projects** — outcomes with a finish line. Tasks link to them.\n- ✅ **Tasks** — with due dates & priority.\n- 📔 **Journal** — one entry per day.\n- 🔗 **Library** — articles, videos, tools.\n\n## Superpowers\n- Link notes with double brackets: [[Areas of My Life]]\n- Tag anything with a hashtag: #learning #work\n- Checklists are clickable in Preview:\n- [x] Open my second brain\n- [ ] Capture my first thought\n- [ ] Write today's journal\n\n> Press `Ctrl + K` anywhere to search or create.\n\nEverything is saved automatically in this browser. Use **Export** (bottom-left) to back up."}, 0),
+      body:"# Welcome 👋\n\nThis is your personal knowledge system — a place to **capture**, **organize**, **distill** and **express** everything that matters.\n\n## How to use it\n- 📥 **Inbox** — dump any thought fast. Sort it later.\n- 📝 **Notes** — evergreen knowledge you want to keep.\n- 💡 **Ideas** — sparks worth exploring.\n- 🚀 **Projects** — outcomes with a finish line. Tasks link to them.\n- ✅ **Tasks** — with due dates & priority.\n- 📔 **Journal** — one entry per day.\n- 🔗 **Library** — articles, videos, tools.\n\n## Superpowers\n- Link notes with double brackets: [[Areas of My Life]]\n- Tag anything with a hashtag: #learning #work\n- Checklists are clickable in Preview:\n- [x] Open my second brain\n- [ ] Capture my first thought\n- [ ] Write today's journal\n\n> Press `Ctrl + K` anywhere to search or create.\n\nEverything is saved automatically in this browser. Use **Export** (bottom-left) to back up.\n\n## Taking over from someone?\nGo to **⚙️ Settings → Import & merge** and choose the handover file they gave you. Their projects, tasks and notes are added next to yours. Start with their *Handover* note."}, 0),
     mk({type:'note', title:'Areas of My Life', body:"Ongoing responsibilities with no end date. Review monthly. #review\n\n## 💼 Work & Career\n- \n\n## 💪 Health & Fitness\n- \n\n## 📚 Learning\n- \n\n## 💰 Finance\n- \n\n## ❤️ Family & Relationships\n- \n\nBack to [[Welcome to your Second Brain]]"}, 1),
     mk({type:'project', id:P, title:'Set up my Second Brain', status:'active', body:"**Goal:** make this the single home for my thoughts, tasks and learning.\n\n**Done when:** I've used it daily for 2 weeks. #personal"}, 2),
     mk({type:'task', title:'Capture 5 thoughts into the Inbox', done:false, due:t, priority:'high', projectId:P}, 3),
@@ -543,6 +561,7 @@ function render() {
   else if (r.name === 'journal') v.innerHTML = journalView();
   else if (r.name === 'inbox') v.innerHTML = inboxView();
   else if (r.name === 'mail') v.innerHTML = mailView();
+  else if (r.name === 'settings') v.innerHTML = settingsView();
   else { const t = Object.keys(TYPES).find(k => TYPES[k].route === r.name); v.innerHTML = t ? listView(t) : home(); }
   if (inArtifact) {
     if (r.name === 'mail' && !watches.main) startMail('main');
@@ -560,7 +579,7 @@ function sidebar(r) {
   db.items.forEach(i => tagsOf(i).forEach(t => tagCounts[t] = (tagCounts[t] || 0) + 1));
   const tags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 24);
   return `
-    <div class="brand"><div class="logo">🧠</div><div>${OWNER} Das<small>Second Brain</small></div></div>
+    <div class="brand"><div class="logo">🧠</div><div>${who() ? esc(who()) + '<small>Second Brain</small>' : 'Second Brain<small><a href="#/settings">Set your name →</a></small>'}</div></div>
     <button class="searchbtn" data-act="search">🔍 Search… <kbd>Ctrl K</kbd></button>
     <nav class="nav">
       ${link('', '🏠', 'Home')}
@@ -574,6 +593,8 @@ function sidebar(r) {
       ${link('projects', '🚀', 'Projects', counts.projects)}
       ${link('tasks', '✅', 'Tasks', counts.tasks)}
       ${link('journal', '📔', 'Journal', counts.journal)}
+      <div class="sec">Workspace</div>
+      ${link('settings', '⚙️', 'Settings & handover')}
     </nav>
     ${tags.length ? `<div class="sec">Tags</div><div class="tags">${tags.map(([t, c]) => `<button class="chip" data-act="tag" data-tag="${esc(t)}">#${esc(t)} <span style="opacity:.6;margin-left:4px">${c}</span></button>`).join('')}</div>` : ''}
     <div class="side-foot">
@@ -638,8 +659,11 @@ function home() {
   const redisc = pool.length ? pool[dayN % pool.length] : null;
   const todayJ = of('journal').find(j => j.date === t);
   return `
-    <h1>${greet}, ${OWNER} ✨</h1>
+    <h1>${greet}${firstName() ? ', ' + esc(firstName()) : ''} ✨</h1>
     <p class="sub">${now.toLocaleDateString(undefined, {weekday:'long', day:'numeric', month:'long', year:'numeric'})}</p>
+    ${who() ? '' : `<div class="panel" style="margin-bottom:16px"><h3>👋 Welcome! What should we call you?</h3>
+      <div class="capture"><input type="text" id="setname" placeholder="Your name"><button class="btn pri" data-act="save-name">Save</button></div>
+      <div class="meta">Shown on your dashboard and in handover notes. Change it anytime in ⚙️ Settings.</div></div>`}
     <div class="panel">${captureBox("What's on your mind?")}</div>
     <div class="stats">
       <a class="stat" href="#/inbox" style="color:inherit"><b>${of('inbox').length}</b><span>📥 In inbox</span></a>
@@ -803,6 +827,94 @@ function itemView(it) {
     ${backs.length ? `<div class="panel side-box"><h3>🔁 Linked from (${backs.length})</h3><div class="grid g3">${backs.map(card).join('')}</div></div>` : ''}`;
 }
 
+/* ---------- settings & handover ---------- */
+const isPrivate = i => i.type === 'journal' || tagsOf(i).some(t => t === 'personal' || t === 'private');
+function settingsView() {
+  const priv = db.items.filter(isPrivate).length;
+  return `<div class="head"><div><h1>⚙️ Settings & handover</h1><p class="sub" style="margin:4px 0 0">Make this yours — and pass your work on cleanly when you move on.</p></div></div>
+  <div class="grid g2">
+    <div class="panel"><h3>👤 Profile</h3>
+      <div class="fields" style="margin:0">
+        <label class="grow">Your name<input type="text" id="setname" value="${esc(who())}" placeholder="Your name"></label>
+        <label class="grow">Role / team<input type="text" id="setrole" value="${esc(db.settings.role || '')}" placeholder="e.g. HR Executive"></label>
+      </div>
+      <div style="margin-top:12px"><button class="btn pri" data-act="save-name">Save profile</button></div>
+    </div>
+    <div class="panel"><h3>💾 Backup</h3>
+      <p class="sub" style="margin:0 0 12px">Download everything, or restore from a backup file.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" data-act="export">⬇ Export everything</button>
+        <button class="btn" data-act="import" data-merge="">⬆ Restore (replace all)</button>
+      </div>
+    </div>
+    <div class="panel" style="grid-column:1/-1"><h3>🤝 Leaving or changing roles? Hand over in 3 steps</h3>
+      <ol style="margin:0 0 14px;padding-left:20px">
+        <li><b>Write the handover note</b>. The app drafts it from your projects, open tasks, notes, library, inbox and important email threads. Then add contacts, access details and anything else that's only in your head.</li>
+        <li><b>Export for handover</b>. This downloads all your work, including emails you turned into tasks or notes. Your journal and anything tagged <span class="chip plain">#personal</span> or <span class="chip plain">#private</span> stay out (${priv} item${priv === 1 ? '' : 's'} right now).</li>
+        <li><b>Give the file to the next person</b>. They open the app, go to Settings → <b>Import & merge</b>, and start from your Handover note.</li>
+      </ol>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn pri" data-act="handover-note">📝 1. Write handover note</button>
+        <button class="btn pri" data-act="export-handover">⬇ 2. Export for handover</button>
+      </div>
+    </div>
+    <div class="panel" style="grid-column:1/-1"><h3>📥 Taking over from someone?</h3>
+      <p class="sub" style="margin:0 0 12px">Import the handover file you were given. Their items are <b>added</b> to yours. Nothing of yours is replaced.</p>
+      <button class="btn pri" data-act="import" data-merge="1">⬆ Import & merge</button>
+    </div>
+    <div class="panel" style="grid-column:1/-1"><h3>🧹 Start fresh</h3>
+      <p class="sub" style="margin:0 0 12px">Remove everything from this second brain. Export first if you need a copy.</p>
+      <button class="btn danger" data-act="wipe">Delete all items…</button>
+    </div>
+  </div>`;
+}
+async function handoverNote() {
+  const t = ymd(), tasks = of('task').filter(x => !x.done);
+  // Important & starred conversations from the last 60 days, so the next person knows which threads matter.
+  let mailSec = '';
+  const api = await getMcp();
+  if (api) {
+    flash('Gathering important emails…');
+    try {
+      const r = await api.callTool(GMAIL, 'search_threads', {query:'(is:starred OR is:important) newer_than:60d -in:spam -in:trash', pageSize:30});
+      const th = ((r.payload || {}).threads || []).map(threadInfo);
+      mailSec = `## 📧 Important email threads (last 60 days)\n${th.map(m => `- [${m.subject.replace(/[\[\]]/g, '')}](${m.url}) — ${m.sender}, ${mailWhen(m.date)}`).join('\n') || '- None'}\n\n`;
+    } catch (e) { mailSec = `## 📧 Important email threads\n- (Couldn't load Gmail just now. Add the key threads by hand.)\n\n`; }
+  }
+  const emailTasks = db.items.filter(i => tagsOf(i).includes('email') && !(i.type === 'task' && i.done));
+  const line = x => `- [ ] ${x.title}${x.due ? ` (due ${shortDate(x.due)})` : ''}${x.priority === 'high' ? ' ❗' : ''}`;
+  const projs = of('project').filter(p => p.status !== 'done' && !isPrivate(p));
+  let b = `Prepared by **${who() || '—'}**${db.settings.role ? ', ' + db.settings.role : ''} on ${niceDate(t)}. #handover\n\n`;
+  b += `## 👋 Start here\n- What I was responsible for: \n- Most urgent things this week: \n\n`;
+  b += `## 🚀 Active projects\n`;
+  b += projs.length ? projs.map(p => {
+    const pt = tasks.filter(x => x.projectId === p.id && !isPrivate(x));
+    return `### ${p.title}\nStatus: ${p.status} · see [[${p.title}]]\n${pt.map(line).join('\n') || '- No open tasks'}`;
+  }).join('\n\n') + '\n\n' : '- None\n\n';
+  const loose = tasks.filter(x => !x.projectId && !isPrivate(x));
+  b += `## ✅ Other open tasks\n${loose.map(line).join('\n') || '- None'}\n\n`;
+  const notes = sortRecent(db.items.filter(i => ['note', 'idea'].includes(i.type) && !isPrivate(i) && !tagsOf(i).includes('handover')).slice());
+  b += `## 📝 Key notes\n${notes.map(n => `- [[${n.title || 'Untitled'}]]`).join('\n') || '- None'}\n\n`;
+  const links = of('link').filter(l => !isPrivate(l));
+  b += `## 🔗 Useful links\n${links.map(l => `- [${l.title || l.url}](${l.url})`).join('\n') || '- None'}\n\n`;
+  b += mailSec;
+  if (emailTasks.length) b += `## 📨 Emails still being worked on\n${emailTasks.map(i => `- [[${i.title || 'Untitled'}]]`).join('\n')}\n\n`;
+  const inbox = of('inbox');
+  if (inbox.length) b += `## 📥 Unsorted inbox items (${inbox.length})\n${inbox.map(i => `- ${i.title}`).join('\n')}\n\n`;
+  b += `## 🔑 Contacts, access & where things live\n- Shared mailbox / email accounts: \n- Key contacts: \n- Shared drives / folders: \n- Accounts & tools (no passwords here): \n\n## ⚠️ Watch out for\n- \n`;
+  const it = make('note', {title:'Handover — ' + niceDate(t), body:b, pinned:true});
+  ui.mode[it.id] = 'write'; go('#/item/' + it.id);
+}
+async function downloadJSON(name, obj) {
+  const json = JSON.stringify(obj, null, 2);
+  const dl = inArtifact ? await claude.use('downloads') : null;
+  if (dl) { try { await dl.save({filename:name, data:json}); } catch (e) {} return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([json], {type:'application/json'})); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const fileTag = () => (slug(who()) || 'second-brain') + '-' + ymd();
+let importMerge = false;
+
 /* ---------- actions ---------- */
 function openJournal(date) {
   let j = of('journal').find(x => x.date === date);
@@ -862,9 +974,23 @@ document.addEventListener('click', e => {
     case 'mail-start': startMail(el.dataset.key); break;
     case 'mail-retry': retryMail(el.dataset.key); break;
     case 'mail-tab': mailTab = el.dataset.tab; mailQ = ''; render(); startMail('main'); break;
+    case 'mail-more': loadMoreMail(); break;
     case 'mail-to': mailTo(el.dataset.key, el.dataset.tid, el.dataset.to); break;
-    case 'export': exportData(); break;
-    case 'import': $('#importFile').click(); break;
+    case 'export': downloadJSON(`backup-${fileTag()}.json`, db); break;
+    case 'export-handover': {
+      const items = db.items.filter(i => !isPrivate(i));
+      if (!items.some(i => tagsOf(i).includes('handover')) && !confirm("You haven't written a handover note yet. Export anyway?")) break;
+      downloadJSON(`handover-${fileTag()}.json`, {handover:{from:who(), role:db.settings.role || '', date:ymd()}, settings:{}, items}); break; }
+    case 'handover-note': handoverNote(); break;
+    case 'save-name': {
+      const n = $('#setname'), r = $('#setrole');
+      if (n) db.settings.name = n.value.trim();
+      if (r) db.settings.role = r.value.trim();
+      save(true); render(); flash('Profile saved ✓'); break; }
+    case 'wipe':
+      if (prompt('This deletes every item. Type DELETE to confirm.') === 'DELETE') { db.items = []; save(true); go('#/'); }
+      break;
+    case 'import': importMerge = !!el.dataset.merge; $('#importFile').click(); break;
     case 'theme': { const order = ['auto', 'light', 'dark']; db.settings.theme = order[(order.indexOf(db.settings.theme || 'auto') + 1) % 3]; save(true); render(); break; }
   }
 });
@@ -927,19 +1053,20 @@ $('#pal').addEventListener('click', e => { if (e.target.id === 'pal') closePal()
 /* ---------- theme / backup ---------- */
 function applyTheme() { const t = db.settings?.theme || 'auto'; if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); }
 function themeIcon() { return {auto:'🌗 Auto', light:'☀️ Light', dark:'🌙 Dark'}[db.settings?.theme || 'auto']; }
-async function exportData() {
-  const name = `ayan-second-brain-${ymd()}.json`, json = JSON.stringify(db, null, 2);
-  const dl = window.claude && typeof window.claude.use === 'function' ? await claude.use('downloads') : null;
-  if (dl) { try { await dl.save({filename:name, data:json}); } catch (e) {} return; }
-  const blob = new Blob([json], {type:'application/json'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
 $('#importFile').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
   const r = new FileReader();
   r.onload = () => { try { const d = JSON.parse(r.result); if (!Array.isArray(d.items)) throw 0;
-      if (confirm(`Replace your current brain with ${d.items.length} items from this backup?`)) { d.settings = d.settings || {theme:'auto'}; db = d; save(true); go('#/'); } }
+      if (importMerge) {
+        const from = d.handover && d.handover.from ? ` from ${d.handover.from}` : '';
+        if (confirm(`Add ${d.items.length} items${from} to your second brain? Your own items stay as they are.`)) {
+          let added = 0;
+          d.items.forEach(it => { if (!it || !it.id || !TYPES[it.type]) return; const ex = get(it.id);
+            if (!ex) { db.items.push(it); added++; } else if ((it.updated || 0) > (ex.updated || 0)) Object.assign(ex, it); });
+          save(true); const h = db.items.find(i => tagsOf(i).includes('handover') && d.items.some(x => x.id === i.id));
+          go(h ? '#/item/' + h.id : '#/'); flash(`Imported ${added} items ✓`);
+        }
+      } else if (confirm(`Replace your current brain with ${d.items.length} items from this backup?`)) { d.settings = {theme:'auto', ...db.settings, ...(d.settings || {})}; db = d; save(true); go('#/'); } }
     catch (err) { alert('That file is not a valid Second Brain backup.'); } e.target.value = ''; };
   r.readAsText(f);
 });

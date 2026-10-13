@@ -1,20 +1,42 @@
-# 🧠 Ayan's Second Brain
+# 🧠 Second Brain
 
-A personal knowledge system in a single HTML file — no install, no build, works offline.
-
-**Open it:** download `index.html` and double-click it, or use the hosted version on claude.ai.
+A personal work and knowledge system in a single HTML file. No install, no build, and it works offline.
+It isn't tied to any one person: whoever opens it sets their own name, and their data stays private to them.
 
 ## Features
-- 📧 **Mail** — your live Gmail inbox (claude.ai version); turn any email into a task, note or inbox item
-- 📥 **Inbox** — capture thoughts fast, then convert them into notes, tasks, ideas or links
-- 📝 **Notes & 💡 Ideas** — Markdown, `[[wiki links]]` with backlinks, `#tags`, clickable checklists
-- 🚀 **Projects** — status, progress bar and linked tasks
-- ✅ **Tasks** — due dates, priority, Focus / Upcoming / No date / Done views
-- 📔 **Journal** — daily entries with prompts, 6-week calendar strip and streak
-- 🔗 **Library** — saved articles, videos and tools
-- 🔍 `Ctrl+K` search & create · `Ctrl+Enter` capture · `Ctrl+E` write/preview
-- 🌗 Light / dark theme, mobile friendly
+- 📧 **Mail:** your live Gmail (Inbox, Unread, Starred, Important, Sent, All mail, plus search and *Load more*). Turn any email into a task, note or inbox item.
+- 📥 **Inbox:** capture thoughts fast, then convert them into notes, tasks, ideas or links.
+- 📝 **Notes & 💡 Ideas:** Markdown, `[[wiki links]]` with backlinks, `#tags`, clickable checklists.
+- 🚀 **Projects:** status, progress bar and linked tasks.
+- ✅ **Tasks:** due dates, priority, and Focus / Upcoming / No date / Done views.
+- 📔 **Journal:** daily entries with prompts, a 6-week calendar strip and a streak counter.
+- 🔗 **Library:** saved articles, videos and tools.
+- ⚙️ **Settings & handover:** profile, backup and restore, a handover note, a handover export, and import & merge.
+- 🔍 `Ctrl+K` searches and creates, `Ctrl+Enter` captures, `Ctrl+E` switches between Write and Preview.
+- 🌗 Light and dark themes, mobile friendly.
 
-## Your data
-Opened as a local file, everything is saved in your browser's `localStorage` — use **Export** to back up and **Import** to restore.
-Opened as a claude.ai artifact, items are saved privately to your claude.ai account and sync across devices.
+## Two ways to run it
+| | claude.ai version | Local file (`index.html`) |
+|---|---|---|
+| Where data is saved | Your claude.ai account, private to you, live-synced across devices | This browser only |
+| Gmail | ✅ through your own Gmail connector | ❌ |
+| Setup | Open the link and sign in | Download and double-click |
+
+## 🤝 Handover guide
+
+### If you're leaving or changing roles
+1. Open **⚙️ Settings & handover**.
+2. Click **1. Write handover note**. The app drafts it from your active projects, open tasks, notes, library, unsorted inbox items and your important or starred email threads from the last 60 days. Fill in the blanks: contacts, shared folders, tools and accounts (never passwords), and anything to watch out for.
+3. Click **2. Export for handover**. This downloads a `handover-<name>-<date>.json` file with all your work. Your **journal** and anything tagged **#personal** or **#private** are left out.
+4. Give that file to your manager or the next person, for example by email or a shared drive.
+
+### If you're taking over
+1. Open the app (the claude.ai link, or `index.html` from this repo) and enter your name when asked.
+2. Go to **⚙️ Settings & handover → Import & merge** and choose the handover file. Their items are added next to yours, and nothing of yours is replaced.
+3. The app opens the **Handover note**. Start there: it links to every project, task and key note.
+4. Mail shows whichever Gmail account *you* have connected. If you've inherited a shared mailbox, connect it in claude.ai Settings → Connectors.
+
+### Good habits that make handover easy
+- Link tasks to projects, and keep project status up to date.
+- Tag private things with `#personal` or `#private` so they never leave with your work.
+- Export a backup from time to time (**⚙️ Settings → Export everything**).
