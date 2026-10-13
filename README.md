@@ -5,6 +5,7 @@ A personal knowledge system in a single HTML file — no install, no build, work
 **Open it:** download `index.html` and double-click it, or use the hosted version on claude.ai.
 
 ## Features
+- 📧 **Mail** — your live Gmail inbox (claude.ai version); turn any email into a task, note or inbox item
 - 📥 **Inbox** — capture thoughts fast, then convert them into notes, tasks, ideas or links
 - 📝 **Notes & 💡 Ideas** — Markdown, `[[wiki links]]` with backlinks, `#tags`, clickable checklists
 - 🚀 **Projects** — status, progress bar and linked tasks

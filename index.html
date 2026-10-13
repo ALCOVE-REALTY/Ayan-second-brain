@@ -148,6 +148,12 @@ textarea:focus,input:focus,select:focus{border-color:var(--accent);box-shadow:0 
 .pal-r a{display:flex;gap:10px;align-items:center;padding:9px 12px;border-radius:8px;color:var(--text)}
 .pal-r a small{margin-left:auto;color:var(--faint)}
 .pal-r a.sel{background:var(--accent-weak)}
+.row.mail{align-items:flex-start;flex-wrap:wrap}
+.row.mail .t a{font-weight:500}
+.row.mail.unread .t b{color:var(--accent)}
+.row.mail .snip{color:var(--muted);font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mail-acts{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+.notice{background:var(--accent-weak);border-radius:9px;padding:10px 12px;font-size:13.5px;margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .saved{position:fixed;bottom:16px;right:16px;background:var(--text);color:var(--bg);font-size:12px;padding:5px 12px;border-radius:20px;opacity:0;transition:opacity .3s;pointer-events:none}
 .saved.show{opacity:.85}
 
@@ -305,6 +311,125 @@ async function syncCloud() {
   syncing = false;
   const s = document.getElementById('syncstat'); if (s) s.innerHTML = syncLabel();
 }
+/* ---------- Gmail (live, read via the viewer's claude.ai Gmail connector) ---------- */
+const GMAIL = 'Gmail';
+const inArtifact = !!(window.claude && typeof window.claude.use === 'function');
+const MAIL_TABS = {inbox:['📥 Inbox', 'in:inbox'], unread:['🔵 Unread', 'in:inbox is:unread'], starred:['⭐ Starred', 'is:starred'], important:['❗ Important', 'in:inbox is:important']};
+const DENIED = ['needs_reauth', 'server_not_connected', 'selection_required', 'blocked_by_policy', 'approval_required', 'not_in_manifest', 'consent_required', 'not_granted', 'capability_disabled', 'capability_removed', 'user_changed'];
+let mcpApi, mailTab = 'inbox', mailQ = '';
+const watches = {};
+const mailFlag = () => { try { return localStorage.getItem(KEY + '-mail') === '1'; } catch (e) { return false; } };
+const decode = s => { const t = document.createElement('textarea'); t.innerHTML = s || ''; return t.value; };
+const mainQuery = () => mailQ.trim() || MAIL_TABS[mailTab][1];
+async function getMcp() { if (mcpApi === undefined) mcpApi = inArtifact ? (await claude.use('mcp')) || null : null; return mcpApi; }
+async function watchQ(key, query, size) {
+  try { localStorage.setItem(KEY + '-mail', '1'); } catch (e) {}
+  const prev = watches[key];
+  if (prev && prev.unsub) prev.unsub();
+  const w = watches[key] = {query, size, status:'loading', threads:prev && prev.query === query ? prev.threads : [], err:null, at:0, unsub:null};
+  paintMail();
+  const api = await getMcp();
+  if (watches[key] !== w) return;
+  if (!api) { w.status = 'unavailable'; paintMail(); return; }
+  w.unsub = api.watchTool(GMAIL, 'search_threads', {query, pageSize:size}, ev => {
+    if (watches[key] !== w) return;
+    if (ev.type === 'data') {
+      const p = ev.result.payload || {};
+      w.threads = Array.isArray(p.threads) ? p.threads : []; w.err = null; w.status = 'ok';
+      w.at = (ev.result.cache && ev.result.cache.storedAt) || Date.now();
+    } else {
+      w.err = ev.error || {code:'upstream_error'};
+      if (DENIED.includes(w.err.code)) w.threads = [];
+      w.status = 'error';
+    }
+    paintMail();
+  }, {refetchInterval:120000});
+}
+async function retryMail(key) {
+  const w = watches[key], api = await getMcp(); if (!w || !api) return;
+  w.status = 'loading'; paintMail();
+  try {
+    const r = await api.callTool(GMAIL, 'search_threads', {query:w.query, pageSize:w.size}, {cache:{refresh:true}});
+    const p = r.payload || {}; w.threads = Array.isArray(p.threads) ? p.threads : []; w.err = null; w.status = 'ok'; w.at = Date.now();
+  } catch (e) { w.err = e || {code:'upstream_error'}; if (DENIED.includes(w.err.code)) w.threads = []; w.status = 'error'; }
+  paintMail();
+}
+function mailErr(e, key) {
+  const retry = `<button class="btn sm" data-act="mail-retry" data-key="${key}">Try again</button>`;
+  const msg = {
+    needs_reauth:'Gmail needs reconnecting — go to claude.ai Settings → Connectors and reconnect Gmail.',
+    server_not_connected:'Gmail isn\'t connected — add it in claude.ai Settings → Connectors.',
+    selection_required:'Choose which Gmail account this page should use.',
+    blocked_by_policy:'Your organisation\'s policy blocks Gmail for this page.',
+    not_in_manifest:'Gmail access is turned off for this page.',
+    consent_required:'Gmail access wasn\'t allowed for this page.',
+    approval_required:'Reading Gmail needs your approval.',
+    server_unavailable:'Gmail is temporarily unreachable.',
+    upstream_error:'Gmail didn\'t respond.',
+    rate_limited:'Too many requests — wait a moment.',
+    tool_error:'Gmail reported an error: ' + (e.message || ''),
+    not_granted:'Mail isn\'t available in this view.', capability_disabled:'Mail isn\'t available in this view.', capability_removed:'Mail isn\'t available in this view.'
+  }[e.code] || `Couldn't load mail (${e.code}).`;
+  const canRetry = !['needs_reauth', 'server_not_connected', 'blocked_by_policy', 'not_granted', 'capability_disabled', 'capability_removed', 'user_changed'].includes(e.code);
+  return `<div class="notice">⚠️ ${esc(msg)}${canRetry ? retry : ''}</div>`;
+}
+function mailWhen(d) {
+  if (!d) return '';
+  const dt = new Date(d); if (isNaN(dt)) return '';
+  return ymd(dt) === ymd() ? dt.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'}) : dt.toLocaleDateString(undefined, {day:'numeric', month:'short'});
+}
+function threadInfo(t) {
+  const ms = t.messages || [], first = ms[0] || {}, last = ms[ms.length - 1] || {};
+  return {
+    subject:decode(first.subject || last.subject) || '(no subject)', sender:decode(last.sender || first.sender || ''),
+    snippet:decode(last.snippet || first.snippet || ''), date:last.date || first.date, url:t.viewUrl || last.viewUrl || '',
+    unread:ms.some(m => (m.labelIds || []).includes('UNREAD')), count:t.messageCount || ms.length
+  };
+}
+function mailRow(t, key, compact) {
+  const m = threadInfo(t);
+  return `<div class="row mail${m.unread ? ' unread' : ''}">
+    <div class="t"><div><b>${esc(m.sender)}</b> <span class="due">· ${mailWhen(m.date)}${m.count > 1 ? ' · ' + m.count + ' messages' : ''}</span></div>
+      <a href="${esc(m.url)}" target="_blank" rel="noopener">${esc(m.subject)}</a>
+      ${compact ? '' : `<div class="snip">${esc(m.snippet)}</div>`}</div>
+    <div class="mail-acts">
+      <button class="btn sm" data-act="mail-to" data-to="task" data-key="${key}" data-tid="${esc(t.id)}" title="Make a task">✅ Task</button>
+      ${compact ? '' : `<button class="btn sm" data-act="mail-to" data-to="note" data-key="${key}" data-tid="${esc(t.id)}" title="Save as a note">📝 Note</button>
+      <button class="btn sm" data-act="mail-to" data-to="inbox" data-key="${key}" data-tid="${esc(t.id)}" title="Send to Inbox">📥</button>`}
+    </div></div>`;
+}
+function mailBody(key, compact) {
+  if (!inArtifact) return '<p class="empty">Mail works when this page is opened on claude.ai (it uses your Gmail connector).</p>';
+  const w = watches[key];
+  if (!w) return `<p class="empty">See your latest emails here and turn them into tasks or notes in one click.</p><button class="btn pri" data-act="mail-start" data-key="${key}">Connect Gmail</button>`;
+  if (w.status === 'unavailable') return '<p class="empty">Mail isn\'t available in this view.</p>';
+  let out = w.err ? mailErr(w.err, key) : '';
+  if (w.threads.length) out += w.threads.map(t => mailRow(t, key, compact)).join('') + (w.at ? `<div class="meta">Updated ${ago(w.at)} · refreshes every 2 min</div>` : '');
+  else if (w.status === 'loading') out += '<p class="empty">Loading mail…</p>';
+  else if (!w.err) out += `<p class="empty">${compact ? 'No unread mail 🎉' : 'No emails found.'}</p>`;
+  return out;
+}
+function paintMail() {
+  const box = document.getElementById('mailbox'); if (box) box.innerHTML = mailBody('main', false);
+  const hb = document.getElementById('mailhome'); if (hb) hb.innerHTML = mailBody('home', true);
+}
+function startMail(key) { key === 'home' ? watchQ('home', 'in:inbox is:unread', 6) : watchQ('main', mainQuery(), 25); }
+function mailTo(key, tid, to) {
+  const w = watches[key], t = w && w.threads.find(x => x.id === tid); if (!t) return;
+  const m = threadInfo(t);
+  const body = `📧 **From:** ${m.sender}\n[Open in Gmail](${m.url})\n\n> ${m.snippet}\n\n#email`;
+  if (to === 'task') { make('task', {title:m.subject, body, due:ymd(), priority:'normal'}); flash('Added to tasks ✅'); }
+  else if (to === 'inbox') { make('inbox', {title:'📧 ' + m.subject + ' — ' + m.sender, body:m.url}); flash('Sent to Inbox 📥'); }
+  else { const it = make('note', {title:m.subject, body}); ui.mode[it.id] = 'write'; go('#/item/' + it.id); }
+}
+function flash(txt) { setTimeout(() => { const el = $('#saved'); el.textContent = txt; el.classList.add('show'); clearTimeout(flashT); flashT = setTimeout(() => el.classList.remove('show'), 1600); }, 450); }
+function mailView() {
+  return `<div class="head"><div><h1>📧 Mail</h1><p class="sub" style="margin:4px 0 0">Your Gmail, live. Turn any email into a task or note.</p></div>
+    ${inArtifact ? `<div style="display:flex;gap:8px"><input type="search" id="mailq" placeholder="Search Gmail… (Enter)" value="${esc(mailQ)}" style="width:220px"><button class="btn" data-act="mail-retry" data-key="main">↻ Refresh</button></div>` : ''}</div>
+    ${inArtifact ? `<div class="tabs" style="margin-bottom:12px">${Object.entries(MAIL_TABS).map(([k, [l]]) => `<button class="${!mailQ && mailTab === k ? 'on' : ''}" data-act="mail-tab" data-tab="${k}">${l}</button>`).join('')}</div>` : ''}
+    <div class="panel" id="mailbox"></div>`;
+}
+
 const syncLabel = () => cloud ? (cloudErr ? '⚠️ Sync issue — saved on this device' : '☁️ Synced to your account') : '💾 Saved on this device';
 
 function seed() {
@@ -386,7 +511,13 @@ function render() {
   else if (r.name === 'tasks') v.innerHTML = tasksView();
   else if (r.name === 'journal') v.innerHTML = journalView();
   else if (r.name === 'inbox') v.innerHTML = inboxView();
+  else if (r.name === 'mail') v.innerHTML = mailView();
   else { const t = Object.keys(TYPES).find(k => TYPES[k].route === r.name); v.innerHTML = t ? listView(t) : home(); }
+  if (inArtifact) {
+    if (r.name === 'mail' && !watches.main) startMail('main');
+    if (r.name === 'home' && !watches.home && mailFlag()) startMail('home');
+  }
+  paintMail();
 }
 
 function sidebar(r) {
@@ -403,6 +534,7 @@ function sidebar(r) {
     <nav class="nav">
       ${link('', '🏠', 'Home')}
       ${link('inbox', '📥', 'Inbox', counts.inbox)}
+      ${link('mail', '📧', 'Mail')}
       <div class="sec">Knowledge</div>
       ${link('notes', '📝', 'Notes', counts.notes)}
       ${link('ideas', '💡', 'Ideas', counts.ideas)}
@@ -493,6 +625,7 @@ function home() {
       <div class="panel"><h3>🚀 Active projects <a class="more" href="#/projects">All →</a></h3>
         ${projects.length ? `<div class="grid">${projects.slice(0, 4).map(card).join('')}</div>` : '<p class="empty">No active projects.</p>'}
       </div>
+      ${inArtifact ? `<div class="panel" style="grid-column:1/-1"><h3>📧 Unread mail <a class="more" href="#/mail">Open mail →</a></h3><div id="mailhome"></div></div>` : ''}
       <div class="panel"><h3>📔 Journal</h3>
         <p class="quote">“${esc(q[0])}” — ${esc(q[1])}</p>
         <div style="margin-top:14px"><button class="btn ${todayJ ? '' : 'pri'}" data-act="journal-today">${todayJ ? "Continue today's entry" : "Write today's entry"}</button></div>
@@ -695,6 +828,10 @@ document.addEventListener('click', e => {
     case 'journal-day': openJournal(el.dataset.date); break;
     case 'journal-pick': { const d = $('#jdate').value; if (d) openJournal(d); break; }
     case 'tpl': { const it = get(id); it.body = (it.body.trim() ? it.body.trimEnd() + '\n\n' : '') + JOURNAL_TPL; touch(it); ui.mode[id] = 'write'; render(); break; }
+    case 'mail-start': startMail(el.dataset.key); break;
+    case 'mail-retry': retryMail(el.dataset.key); break;
+    case 'mail-tab': mailTab = el.dataset.tab; mailQ = ''; render(); startMail('main'); break;
+    case 'mail-to': mailTo(el.dataset.key, el.dataset.tid, el.dataset.to); break;
     case 'export': exportData(); break;
     case 'import': $('#importFile').click(); break;
     case 'theme': { const order = ['auto', 'light', 'dark']; db.settings.theme = order[(order.indexOf(db.settings.theme || 'auto') + 1) % 3]; save(true); render(); break; }
@@ -719,6 +856,7 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && k === 'enter' && e.target.id === 'cap') { e.preventDefault(); capture(); return; }
   if ((e.ctrlKey || e.metaKey) && k === 'e') { const r = route(); if (r.name === 'item') { e.preventDefault(); const it = get(r.arg); const cur = ui.mode[it.id] || ($('.body-ed') ? 'write' : 'preview'); ui.mode[it.id] = cur === 'write' ? 'preview' : 'write'; render(); if (ui.mode[it.id] === 'write') $('.body-ed').focus(); } return; }
   if (k === 'enter' && e.target.classList.contains('qtask')) { addTask(e.target.value, {projectId:e.target.dataset.project, due:e.target.dataset.project ? '' : ymd()}); setTimeout(() => { const q = document.querySelector('.qtask'); q && q.focus(); }); return; }
+  if (k === 'enter' && e.target.id === 'mailq') { mailQ = e.target.value; render(); startMail('main'); return; }
   if (k === 'enter' && e.target.id === 'nt-title') { $('[data-act="add-task"]').click(); return; }
   if (k === 'enter' && e.target.classList.contains('ed-title')) { e.preventDefault(); ui.mode[route().arg] = 'write'; render(); $('.body-ed') && $('.body-ed').focus(); }
 });
