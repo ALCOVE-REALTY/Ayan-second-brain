@@ -37,6 +37,19 @@
 .ptable .row{display:grid;grid-template-columns:2fr 1.4fr 1.2fr 1fr 1.1fr;gap:10px}
 .ptable .row.h{font-size:12px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em}
 @media (max-width:860px){.ptable .row{grid-template-columns:1fr 1fr}.ptable .row.h{display:none}}
+.bar{display:grid;grid-template-columns:minmax(90px,34%) 1fr auto;gap:10px;align-items:center;padding:6px 4px;border-radius:6px;color:var(--text)}
+.bar:hover{background:var(--side)}
+.bl{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bt{height:10px;background:var(--side);border-radius:0 4px 4px 0;overflow:hidden}
+.bar:hover .bt{background:var(--bg)}
+.bt i{display:block;height:100%;min-width:2px;background:var(--accent);border-radius:0 4px 4px 0}
+.bv{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bv small{font-weight:400;color:var(--muted)}
+.cols{display:flex;align-items:stretch;gap:8px;height:150px}
+.cols>div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;min-width:0}
+.cols i{display:block;width:100%;max-width:30px;min-height:2px;background:var(--accent);border-radius:4px 4px 0 0}
+.cols>div:hover i{filter:brightness(1.15)}
+.cols small{font-size:11px;color:var(--faint);white-space:nowrap}
 .tabs.spaces{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
 .tabs.spaces button{padding:5px 2px;font-size:12.5px;white-space:nowrap}
 *{box-sizing:border-box}
@@ -608,12 +621,13 @@ function render() {
   else if (r.name === 'mail') v.innerHTML = mailView();
   else if (r.name === 'settings') v.innerHTML = settingsView();
   else if (r.name === 'reminders') v.innerHTML = remindersView();
+  else if (r.name === 'dashboard') v.innerHTML = dashboardView();
   else if (r.name === 'hiring') v.innerHTML = hiringView();
   else if (r.name === 'people') v.innerHTML = peopleView();
   else { const t = Object.keys(TYPES).find(k => TYPES[k].route === r.name); v.innerHTML = t ? listView(t) : home(); }
   if (inArtifact) {
     if (r.name === 'mail' && !watches.main) startMail('main');
-    if (r.name === 'home' && !watches.home && mailFlag()) startMail('home');
+    if ((r.name === 'home' || r.name === 'dashboard') && !watches.home && mailFlag()) startMail('home');
   }
   paintMail();
 }
@@ -632,6 +646,7 @@ function sidebar(r) {
     <button class="searchbtn" data-act="search">🔍 Search… <kbd>Ctrl K</kbd></button>
     <nav class="nav">
       ${link('', '🏠', 'Home')}
+      ${link('dashboard', '📊', 'All work dashboard')}
       ${link('reminders', '🔔', 'Reminders', remCount())}
       ${link('inbox', '📥', 'Inbox', counts.inbox)}
       ${curSpace() !== 'personal' ? link('mail', '📧', 'Mail') : ''}
@@ -1013,6 +1028,53 @@ function hrDatalists() {
   return `<datalist id="dl-desig">${desig.map(d => `<option value="${esc(d)}">`).join('')}</datalist><datalist id="dl-loc">${locs.map(d => `<option value="${esc(d)}">`).join('')}</datalist>`;
 }
 
+/* ---------- All-work dashboard (Work space only, whatever the space switch says) ---------- */
+const isWork = i => spaceOf(i) === 'work';
+const wOf = t => ofAll(t).filter(isWork);
+// Single-series horizontal bars: label · bar · value (direct-labelled, so no legend needed).
+function bars(rows, empty = 'No data yet.') {
+  if (!rows.length) return `<p class="empty">${empty}</p>`;
+  const max = Math.max(1, ...rows.map(r => r[1]));
+  return rows.map(([l, v, sub, href]) => `<a class="bar" ${href ? `href="${href}"` : ''} title="${esc(l)}: ${v}${sub ? ' · ' + esc(sub) : ''}">
+    <span class="bl">${esc(l)}</span><span class="bt"><i style="width:${v / max * 100}%"></i></span><span class="bv">${v}${sub ? ` <small>${esc(sub)}</small>` : ''}</span></a>`).join('');
+}
+function dashboardView() {
+  const t = ymd(), tasks = wOf('task'), open = tasks.filter(x => !x.done), cands = wOf('candidate'), emps = wOf('employee').filter(e => e.status !== 'exited');
+  const overdue = open.filter(x => x.due && x.due < t), dueToday = open.filter(x => x.due === t);
+  const weekAgo = Date.now() - 7 * 864e5, doneWeek = tasks.filter(x => x.done && (x.doneAt || x.updated) >= weekAgo).length;
+  const activeC = cands.filter(c => !['hired', 'rejected'].includes(c.stage));
+  const ev30 = hrEvents(30).filter(e => isWork(get(e.id) || {})), joins = ev30.filter(e => e.kind === 'joining'), ints = hrEvents(7).filter(e => e.kind === 'interview');
+  const projects = wOf('project').filter(p => p.status === 'active');
+  const tile = (v, l, href, warn) => `<a class="stat" href="${href}" style="color:inherit"><b${warn && v ? ' style="color:var(--danger)"' : ''}>${v}</b><span>${l}</span></a>`;
+  // Tasks completed per week, last 8 weeks (Monday-start weeks)
+  const monday = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return +x; };
+  const thisMon = monday(Date.now()), weeks = [...Array(8)].map((_, i) => thisMon - (7 - i) * 7 * 864e5);
+  const wk = weeks.map(w => tasks.filter(x => x.done && monday(x.doneAt || x.updated) === w).length), wmax = Math.max(1, ...wk);
+  const count = (arr, key) => Object.entries(arr.reduce((m, x) => { const k = (x[key] || '').trim() || 'Not set'; m[k] = (m[k] || 0) + 1; return m; }, {})).sort((a, b) => b[1] - a[1]);
+  const positions = count(activeC, 'position').slice(0, 8).map(([p, n]) => [p, n, '', '#/hiring']);
+  const recent = sortRecent(db.items.filter(i => isWork(i) && i.type !== 'inbox').slice()).slice(0, 8);
+  return `<div class="head"><div><h1>📊 All work dashboard</h1><p class="sub" style="margin:4px 0 0">${niceDate(t)} · everything in your 💼 Work space, at a glance.</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#/reminders">🔔 Reminders</a><button class="btn pri" data-act="send-digest" data-via="email">📧 Email me today's summary</button></div></div>
+    <div class="stats" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+      ${tile(open.length, '✅ Open tasks', '#/tasks')}${tile(overdue.length, '⚠️ Overdue', '#/tasks', true)}${tile(dueToday.length, '📍 Due today', '#/tasks')}${tile(doneWeek, '🏁 Done in 7 days', '#/tasks')}
+      ${tile(projects.length, '🚀 Active projects', '#/projects')}${tile(activeC.length, '🧑‍💼 Active candidates', '#/hiring')}${tile(ints.length, '🗓️ Interviews · 7d', '#/reminders')}
+      ${tile(joins.length, '🆕 Joinings · 30d', '#/reminders')}${tile(emps.length, '👥 Headcount', '#/people')}${tile(wOf('inbox').length, '📥 Inbox to sort', '#/inbox')}
+    </div>
+    <div class="grid g2">
+      <div class="panel"><h3>🔔 Next 7 days <a class="more" href="#/reminders">All →</a></h3>${(() => { const r = allReminders(7).filter(x => isWork(get(x.id) || {})).slice(0, 10); return r.length ? r.map(remRow).join('') : '<p class="empty">Nothing due this week. 🎉</p>'; })()}</div>
+      <div class="panel"><h3>🧑‍💼 Hiring funnel <a class="more" href="#/hiring">Board →</a></h3>${bars(Object.entries(STAGES).map(([k, [ic, l]]) => [`${ic} ${l}`, cands.filter(c => (c.stage || 'applied') === k).length, '', '#/hiring']), 'No candidates yet.')}</div>
+      <div class="panel"><h3>📌 Open positions</h3>${bars(positions, 'No active candidates.')}</div>
+      <div class="panel"><h3>🚀 Project progress <a class="more" href="#/projects">All →</a></h3>${bars(projects.map(p => { const ts = tasks.filter(x => x.projectId === p.id), d = ts.filter(x => x.done).length; return [p.title, ts.length ? Math.round(d / ts.length * 100) : 0, `% · ${d}/${ts.length} tasks`, '#/item/' + p.id]; }), 'No active projects.')}</div>
+      <div class="panel"><h3>🏁 Tasks completed per week</h3>
+        <div class="cols">${wk.map((n, i) => `<div title="Week of ${new Date(weeks[i]).toLocaleDateString(undefined, {day:'numeric', month:'short'})}: ${n} done"><span class="bv">${n || ''}</span><i style="height:calc((100% - 38px) * ${n / wmax})"></i><small>${new Date(weeks[i]).toLocaleDateString(undefined, {day:'numeric', month:'short'})}</small></div>`).join('')}</div></div>
+      <div class="panel"><h3>👥 Headcount by department <a class="more" href="#/people">People →</a></h3>${bars(count(emps, 'department').slice(0, 8).map(([k, n]) => [k, n, '', '#/people']), 'No employees yet.')}</div>
+      <div class="panel"><h3>📍 Headcount by location</h3>${bars(count(emps, 'location').slice(0, 8).map(([k, n]) => [k, n, '', '#/people']), 'No employees yet.')}</div>
+      <div class="panel"><h3>🧾 Employee status</h3>${bars(Object.entries(EMP_STATUS).filter(([k]) => k !== 'exited').map(([k, l]) => [l, emps.filter(e => e.status === k).length, '', '#/people']), 'No employees yet.')}</div>
+      ${inArtifact ? `<div class="panel" style="grid-column:1/-1"><h3>📧 Unread mail <a class="more" href="#/mail">Open mail →</a></h3><div id="mailhome"></div></div>` : ''}
+      <div class="panel" style="grid-column:1/-1"><h3>🕘 Recently worked on</h3>${recent.length ? `<div class="grid g3">${recent.map(card).join('')}</div>` : '<p class="empty">Nothing yet.</p>'}</div>
+    </div>`;
+}
+
 /* ---------- Reminders: dashboard + delivery to email (Gmail) and phone (WhatsApp) ---------- */
 const WA = 'Whatsapp';  // connector display name, exactly as claude.ai lists it
 let remStatus = '';
@@ -1279,7 +1341,7 @@ document.addEventListener('click', e => {
     case 'search': openPal(); break;
     case 'capture': capture(); break;
     case 'new': { const it = make(el.dataset.type); ui.mode[it.id] = 'write'; go('#/item/' + it.id); setTimeout(() => $('.ed-title') && $('.ed-title').focus(), 30); break; }
-    case 'toggle': { const t = get(id); t.done = el.checked; touch(t); save(true); repeatTask(t); setTimeout(render, 150); break; }
+    case 'toggle': { const t = get(id); t.done = el.checked; t.doneAt = el.checked ? Date.now() : null; touch(t); save(true); repeatTask(t); setTimeout(render, 150); break; }
     case 'hr-kit': hrKit(); break;
     case 'remdays': ui.remDays = +el.dataset.d; render(); break;
     case 'send-digest': sendDigest(el.dataset.via); break;
@@ -1349,6 +1411,7 @@ document.addEventListener('input', e => {
   const f = el.dataset.field; if (!f) return;
   const r = route(); const it = get(r.arg); if (!it) return;
   it[f] = el.type === 'checkbox' ? el.checked : el.value;
+  if (f === 'done') it.doneAt = el.checked ? Date.now() : null;
   touch(it);
 });
 document.addEventListener('change', e => {

@@ -4,6 +4,7 @@ A personal work and knowledge system in a single HTML file. No install, no build
 It isn't tied to any one person: whoever opens it sets their own name, and their data stays private to them.
 
 ## Features
+- 📊 **All work dashboard:** one screen with task, project, hiring, joining, interview and headcount numbers, a hiring funnel, open positions, project progress, tasks completed per week, headcount by department and location, unread mail and recent work.
 - 🔔 **Reminders:** upcoming joinings, interviews, due and overdue tasks, birthdays, work anniversaries and probation reviews. Get them by email or WhatsApp, now or as a daily digest.
 - 🧑‍💼 **Hiring:** a candidate board (Applied, Screening, Interview, Offer, Hired). Add applicants straight from Gmail.
 - 👥 **People:** employee directory with onboarding and exit checklists. There is also an HR starter kit of SOPs, policies, letter templates and monthly routines.
