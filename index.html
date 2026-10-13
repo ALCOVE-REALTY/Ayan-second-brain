@@ -23,6 +23,11 @@
   --line:#2b2b31;--accent:#8b85ff;--accent-weak:#25234a;--danger:#ef6b6b;--ok:#4cc38a;--warn:#e0a548;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 14px rgba(0,0,0,.25);
 }
+:root[data-space="personal"]{--accent:#0d8a5f;--accent-weak:#e0f3ea}
+@media (prefers-color-scheme:dark){:root[data-space="personal"]:not([data-theme="light"]){--accent:#4cc38a;--accent-weak:#163329}}
+:root[data-theme="dark"][data-space="personal"]{--accent:#4cc38a;--accent-weak:#163329}
+.tabs.spaces{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+.tabs.spaces button{padding:5px 2px;font-size:12.5px;white-space:nowrap}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,Inter,sans-serif;-webkit-font-smoothing:antialiased}
@@ -255,11 +260,18 @@ function save(now) {
   now ? go() : (saveT = setTimeout(go, 400));
 }
 const get = id => db.items.find(i => i.id === id);
-const of = t => db.items.filter(i => i.type === t);
+// Spaces: every item is Work or Personal. Items without a space fall back to their #personal / #private tags.
+const SPACES = {work:['💼', 'Work'], personal:['🏡', 'Personal'], all:['🗂️', 'All']};
+const curSpace = () => (db && db.settings && SPACES[db.settings.space]) ? db.settings.space : 'all';
+const spaceOf = i => i.space === 'work' || i.space === 'personal' ? i.space : (tagsOf(i).some(t => t === 'personal' || t === 'private') ? 'personal' : 'work');
+const vis = i => curSpace() === 'all' || spaceOf(i) === curSpace();
+const ofAll = t => db.items.filter(i => i.type === t);
+const of = t => ofAll(t).filter(vis);
 const byTitle = t => db.items.find(i => (i.title || '').trim().toLowerCase() === t.trim().toLowerCase());
 const sortRecent = a => a.sort((x, y) => (!!y.pinned - !!x.pinned) || (y.updated - x.updated));
 function make(type, extra = {}) {
-  const it = {id:uid(), type, title:'', body:'', tags:[], pinned:false, created:Date.now(), updated:Date.now(), ...extra};
+  const space = curSpace() !== 'all' ? curSpace() : (type === 'journal' ? 'personal' : 'work');
+  const it = {id:uid(), type, title:'', body:'', tags:[], pinned:false, space, created:Date.now(), updated:Date.now(), ...extra};
   if (type === 'task') Object.assign(it, {done:false, due:'', priority:'normal', projectId:'', ...extra});
   if (type === 'project') Object.assign(it, {status:'active', ...extra});
   if (type === 'link') Object.assign(it, {url:'', ...extra});
@@ -467,9 +479,9 @@ function mailTo(key, tid, to) {
   const w = watches[key], t = w && allThreads(w).find(x => x.id === tid); if (!t) return;
   const m = threadInfo(t);
   const body = `📧 **From:** ${m.sender}\n[Open in Gmail](${m.url})\n\n> ${m.snippet}\n\n#email`;
-  if (to === 'task') { make('task', {title:m.subject, body, due:ymd(), priority:'normal'}); flash('Added to tasks ✅'); }
-  else if (to === 'inbox') { make('inbox', {title:'📧 ' + m.subject + ' — ' + m.sender, body:m.url}); flash('Sent to Inbox 📥'); }
-  else { const it = make('note', {title:m.subject, body}); ui.mode[it.id] = 'write'; go('#/item/' + it.id); }
+  if (to === 'task') { make('task', {title:m.subject, body, due:ymd(), priority:'normal', space:'work'}); flash('Added to Work tasks ✅'); }
+  else if (to === 'inbox') { make('inbox', {title:'📧 ' + m.subject + ' — ' + m.sender, body:m.url, space:'work'}); flash('Sent to Inbox 📥'); }
+  else { const it = make('note', {title:m.subject, body, space:'work'}); ui.mode[it.id] = 'write'; go('#/item/' + it.id); }
 }
 function flash(txt) { setTimeout(() => { const el = $('#saved'); el.textContent = txt; el.classList.add('show'); clearTimeout(flashT); flashT = setTimeout(() => el.classList.remove('show'), 1600); }, 450); }
 function mailView() {
@@ -580,11 +592,12 @@ function sidebar(r) {
   const tags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 24);
   return `
     <div class="brand"><div class="logo">🧠</div><div>${who() ? esc(who()) + '<small>Second Brain</small>' : 'Second Brain<small><a href="#/settings">Set your name →</a></small>'}</div></div>
+    <div class="tabs spaces" style="margin-bottom:10px">${Object.entries(SPACES).map(([k, [ic, l]]) => `<button class="${curSpace() === k ? 'on' : ''}" data-act="space" data-s="${k}">${ic} ${l}</button>`).join('')}</div>
     <button class="searchbtn" data-act="search">🔍 Search… <kbd>Ctrl K</kbd></button>
     <nav class="nav">
       ${link('', '🏠', 'Home')}
       ${link('inbox', '📥', 'Inbox', counts.inbox)}
-      ${link('mail', '📧', 'Mail')}
+      ${curSpace() !== 'personal' ? link('mail', '📧', 'Mail') : ''}
       <div class="sec">Knowledge</div>
       ${link('notes', '📝', 'Notes', counts.notes)}
       ${link('ideas', '💡', 'Ideas', counts.ideas)}
@@ -654,13 +667,13 @@ function home() {
   const focus = of('task').filter(x => !x.done && x.due && x.due <= t).sort((a, b) => a.due.localeCompare(b.due));
   const high = of('task').filter(x => !x.done && x.priority === 'high' && (!x.due || x.due > t));
   const projects = of('project').filter(p => p.status === 'active');
-  const recent = sortRecent(db.items.filter(i => ['note', 'idea', 'link'].includes(i.type)).slice()).slice(0, 6);
-  const pool = db.items.filter(i => ['note', 'idea'].includes(i.type) && !i.pinned);
+  const recent = sortRecent(db.items.filter(i => ['note', 'idea', 'link'].includes(i.type) && vis(i)).slice()).slice(0, 6);
+  const pool = db.items.filter(i => ['note', 'idea'].includes(i.type) && !i.pinned && vis(i));
   const redisc = pool.length ? pool[dayN % pool.length] : null;
-  const todayJ = of('journal').find(j => j.date === t);
+  const todayJ = ofAll('journal').find(j => j.date === t);
   return `
     <h1>${greet}${firstName() ? ', ' + esc(firstName()) : ''} ✨</h1>
-    <p class="sub">${now.toLocaleDateString(undefined, {weekday:'long', day:'numeric', month:'long', year:'numeric'})}</p>
+    <p class="sub">${now.toLocaleDateString(undefined, {weekday:'long', day:'numeric', month:'long', year:'numeric'})} · ${SPACES[curSpace()][0]} ${curSpace() === 'all' ? 'Work & Personal' : SPACES[curSpace()][1] + ' space'}</p>
     ${who() ? '' : `<div class="panel" style="margin-bottom:16px"><h3>👋 Welcome! What should we call you?</h3>
       <div class="capture"><input type="text" id="setname" placeholder="Your name"><button class="btn pri" data-act="save-name">Save</button></div>
       <div class="meta">Shown on your dashboard and in handover notes. Change it anytime in ⚙️ Settings.</div></div>`}
@@ -680,7 +693,7 @@ function home() {
       <div class="panel"><h3>🚀 Active projects <a class="more" href="#/projects">All →</a></h3>
         ${projects.length ? `<div class="grid">${projects.slice(0, 4).map(card).join('')}</div>` : '<p class="empty">No active projects.</p>'}
       </div>
-      ${inArtifact ? `<div class="panel" style="grid-column:1/-1"><h3>📧 Unread mail <a class="more" href="#/mail">Open mail →</a></h3><div id="mailhome"></div></div>` : ''}
+      ${inArtifact && curSpace() !== 'personal' ? `<div class="panel" style="grid-column:1/-1"><h3>📧 Unread mail <a class="more" href="#/mail">Open mail →</a></h3><div id="mailhome"></div></div>` : ''}
       <div class="panel"><h3>📔 Journal</h3>
         <p class="quote">“${esc(q[0])}” — ${esc(q[1])}</p>
         <div style="margin-top:14px"><button class="btn ${todayJ ? '' : 'pri'}" data-act="journal-today">${todayJ ? "Continue today's entry" : "Write today's entry"}</button></div>
@@ -766,7 +779,7 @@ function inboxView() {
 }
 
 function tagView(tag) {
-  const items = sortRecent(db.items.filter(i => tagsOf(i).includes(tag)));
+  const items = sortRecent(db.items.filter(i => tagsOf(i).includes(tag) && vis(i)));
   return `<div class="head"><h1><span class="chip plain" style="font-size:22px;padding:2px 14px">#${esc(tag)}</span></h1><span class="sub" style="margin:0">${items.length} item${items.length === 1 ? '' : 's'}</span></div>
     ${items.length ? `<div class="grid g3">${items.map(card).join('')}</div>` : '<p class="empty">Nothing tagged yet.</p>'}`;
 }
@@ -810,6 +823,7 @@ function itemView(it) {
       <a class="btn sm ghost" href="#/${T.route}">← ${T.plural}</a>
       <span class="badge">${T.icon} ${T.label}</span>
       <span style="margin-left:auto"></span>
+      <select data-field="space" title="Which space this belongs to" style="width:auto;padding:4px 8px;font-size:13px">${['work', 'personal'].map(s => `<option value="${s}" ${spaceOf(it) === s ? 'selected' : ''}>${SPACES[s][0]} ${SPACES[s][1]}</option>`).join('')}</select>
       ${it.type !== 'journal' ? `<button class="btn sm ghost" data-act="pin" data-id="${it.id}" title="Pin">${it.pinned ? '★ Pinned' : '☆ Pin'}</button>` : ''}
       <button class="btn sm ghost danger" data-act="del" data-id="${it.id}">🗑 Delete</button>
     </div>
@@ -828,7 +842,7 @@ function itemView(it) {
 }
 
 /* ---------- settings & handover ---------- */
-const isPrivate = i => i.type === 'journal' || tagsOf(i).some(t => t === 'personal' || t === 'private');
+const isPrivate = i => i.type === 'journal' || spaceOf(i) === 'personal';
 function settingsView() {
   const priv = db.items.filter(isPrivate).length;
   return `<div class="head"><div><h1>⚙️ Settings & handover</h1><p class="sub" style="margin:4px 0 0">Make this yours — and pass your work on cleanly when you move on.</p></div></div>
@@ -850,7 +864,7 @@ function settingsView() {
     <div class="panel" style="grid-column:1/-1"><h3>🤝 Leaving or changing roles? Hand over in 3 steps</h3>
       <ol style="margin:0 0 14px;padding-left:20px">
         <li><b>Write the handover note</b>. The app drafts it from your projects, open tasks, notes, library, inbox and important email threads. Then add contacts, access details and anything else that's only in your head.</li>
-        <li><b>Export for handover</b>. This downloads all your work, including emails you turned into tasks or notes. Your journal and anything tagged <span class="chip plain">#personal</span> or <span class="chip plain">#private</span> stay out (${priv} item${priv === 1 ? '' : 's'} right now).</li>
+        <li><b>Export for handover</b>. This downloads all your work, including emails you turned into tasks or notes. Everything in your <b>🏡 Personal</b> space and your journal stays out (${priv} item${priv === 1 ? '' : 's'} right now).</li>
         <li><b>Give the file to the next person</b>. They open the app, go to Settings → <b>Import & merge</b>, and start from your Handover note.</li>
       </ol>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -869,7 +883,7 @@ function settingsView() {
   </div>`;
 }
 async function handoverNote() {
-  const t = ymd(), tasks = of('task').filter(x => !x.done);
+  const t = ymd(), tasks = ofAll('task').filter(x => !x.done);
   // Important & starred conversations from the last 60 days, so the next person knows which threads matter.
   let mailSec = '';
   const api = await getMcp();
@@ -881,9 +895,9 @@ async function handoverNote() {
       mailSec = `## 📧 Important email threads (last 60 days)\n${th.map(m => `- [${m.subject.replace(/[\[\]]/g, '')}](${m.url}) — ${m.sender}, ${mailWhen(m.date)}`).join('\n') || '- None'}\n\n`;
     } catch (e) { mailSec = `## 📧 Important email threads\n- (Couldn't load Gmail just now. Add the key threads by hand.)\n\n`; }
   }
-  const emailTasks = db.items.filter(i => tagsOf(i).includes('email') && !(i.type === 'task' && i.done));
+  const emailTasks = db.items.filter(i => tagsOf(i).includes('email') && !isPrivate(i) && !(i.type === 'task' && i.done));
   const line = x => `- [ ] ${x.title}${x.due ? ` (due ${shortDate(x.due)})` : ''}${x.priority === 'high' ? ' ❗' : ''}`;
-  const projs = of('project').filter(p => p.status !== 'done' && !isPrivate(p));
+  const projs = ofAll('project').filter(p => p.status !== 'done' && !isPrivate(p));
   let b = `Prepared by **${who() || '—'}**${db.settings.role ? ', ' + db.settings.role : ''} on ${niceDate(t)}. #handover\n\n`;
   b += `## 👋 Start here\n- What I was responsible for: \n- Most urgent things this week: \n\n`;
   b += `## 🚀 Active projects\n`;
@@ -895,11 +909,11 @@ async function handoverNote() {
   b += `## ✅ Other open tasks\n${loose.map(line).join('\n') || '- None'}\n\n`;
   const notes = sortRecent(db.items.filter(i => ['note', 'idea'].includes(i.type) && !isPrivate(i) && !tagsOf(i).includes('handover')).slice());
   b += `## 📝 Key notes\n${notes.map(n => `- [[${n.title || 'Untitled'}]]`).join('\n') || '- None'}\n\n`;
-  const links = of('link').filter(l => !isPrivate(l));
+  const links = ofAll('link').filter(l => !isPrivate(l));
   b += `## 🔗 Useful links\n${links.map(l => `- [${l.title || l.url}](${l.url})`).join('\n') || '- None'}\n\n`;
   b += mailSec;
   if (emailTasks.length) b += `## 📨 Emails still being worked on\n${emailTasks.map(i => `- [[${i.title || 'Untitled'}]]`).join('\n')}\n\n`;
-  const inbox = of('inbox');
+  const inbox = ofAll('inbox').filter(i => !isPrivate(i));
   if (inbox.length) b += `## 📥 Unsorted inbox items (${inbox.length})\n${inbox.map(i => `- ${i.title}`).join('\n')}\n\n`;
   b += `## 🔑 Contacts, access & where things live\n- Shared mailbox / email accounts: \n- Key contacts: \n- Shared drives / folders: \n- Accounts & tools (no passwords here): \n\n## ⚠️ Watch out for\n- \n`;
   const it = make('note', {title:'Handover — ' + niceDate(t), body:b, pinned:true});
@@ -917,7 +931,7 @@ let importMerge = false;
 
 /* ---------- actions ---------- */
 function openJournal(date) {
-  let j = of('journal').find(x => x.date === date);
+  let j = ofAll('journal').find(x => x.date === date);
   if (!j) j = make('journal', {date, title:niceDate(date), body:JOURNAL_TPL});
   ui.mode[j.id] = 'write';
   go('#/item/' + j.id);
@@ -974,6 +988,7 @@ document.addEventListener('click', e => {
     case 'mail-start': startMail(el.dataset.key); break;
     case 'mail-retry': retryMail(el.dataset.key); break;
     case 'mail-tab': mailTab = el.dataset.tab; mailQ = ''; render(); startMail('main'); break;
+    case 'space': db.settings.space = el.dataset.s; save(true); render(); break;
     case 'mail-more': loadMoreMail(); break;
     case 'mail-to': mailTo(el.dataset.key, el.dataset.tid, el.dataset.to); break;
     case 'export': downloadJSON(`backup-${fileTag()}.json`, db); break;
@@ -1031,9 +1046,9 @@ function palRender() {
     {icon:'📔', label:"Today's journal", run:() => openJournal(ymd())},
     {icon:'📥', label:'Capture to inbox', run:() => { const v = $('#palq').value.trim(); if (v) make('inbox', {title:v}); go('#/inbox'); }}
   ];
-  const hits = (q ? db.items.filter(i => (i.title + ' ' + i.body + ' ' + (i.url || '')).toLowerCase().includes(q))
+  const hits = (q ? db.items.filter(i => vis(i) && (i.title + ' ' + i.body + ' ' + (i.url || '')).toLowerCase().includes(q))
     .sort((a, b) => ((b.title || '').toLowerCase().includes(q) - (a.title || '').toLowerCase().includes(q)) || b.updated - a.updated)
-    : sortRecent(db.items.filter(i => i.type !== 'task').slice())).slice(0, 25)
+    : sortRecent(db.items.filter(i => i.type !== 'task' && vis(i)).slice())).slice(0, 25)
     .map(i => ({icon:TYPES[i.type].icon, label:i.title || 'Untitled', meta:TYPES[i.type].label, run:() => go('#/item/' + i.id)}));
   const c = q ? cmds.map(x => ({...x, label:x.label + (x.label.startsWith('New') || x.label.startsWith('Capture') ? ` “${$('#palq').value.trim()}”` : '')})) : cmds;
   palItems = q ? hits.concat(c) : c.concat(hits);
@@ -1051,7 +1066,7 @@ $('#palr').addEventListener('click', e => { const a = e.target.closest('a[data-i
 $('#pal').addEventListener('click', e => { if (e.target.id === 'pal') closePal(); });
 
 /* ---------- theme / backup ---------- */
-function applyTheme() { const t = db.settings?.theme || 'auto'; if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); }
+function applyTheme() { document.documentElement.setAttribute('data-space', curSpace()); const t = db.settings?.theme || 'auto'; if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); }
 function themeIcon() { return {auto:'🌗 Auto', light:'☀️ Light', dark:'🌙 Dark'}[db.settings?.theme || 'auto']; }
 $('#importFile').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;

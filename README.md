@@ -11,6 +11,7 @@ It isn't tied to any one person: whoever opens it sets their own name, and their
 - ✅ **Tasks:** due dates, priority, and Focus / Upcoming / No date / Done views.
 - 📔 **Journal:** daily entries with prompts, a 6-week calendar strip and a streak counter.
 - 🔗 **Library:** saved articles, videos and tools.
+- 💼🏡 **Work / Personal spaces:** switch at the top of the sidebar. Every item belongs to one space, and Personal items never go into a handover.
 - ⚙️ **Settings & handover:** profile, backup and restore, a handover note, a handover export, and import & merge.
 - 🔍 `Ctrl+K` searches and creates, `Ctrl+Enter` captures, `Ctrl+E` switches between Write and Preview.
 - 🌗 Light and dark themes, mobile friendly.
@@ -27,7 +28,7 @@ It isn't tied to any one person: whoever opens it sets their own name, and their
 ### If you're leaving or changing roles
 1. Open **⚙️ Settings & handover**.
 2. Click **1. Write handover note**. The app drafts it from your active projects, open tasks, notes, library, unsorted inbox items and your important or starred email threads from the last 60 days. Fill in the blanks: contacts, shared folders, tools and accounts (never passwords), and anything to watch out for.
-3. Click **2. Export for handover**. This downloads a `handover-<name>-<date>.json` file with all your work. Your **journal** and anything tagged **#personal** or **#private** are left out.
+3. Click **2. Export for handover**. This downloads a `handover-<name>-<date>.json` file with all your work. Everything in your **🏡 Personal** space and your **journal** is left out.
 4. Give that file to your manager or the next person, for example by email or a shared drive.
 
 ### If you're taking over
@@ -38,5 +39,5 @@ It isn't tied to any one person: whoever opens it sets their own name, and their
 
 ### Good habits that make handover easy
 - Link tasks to projects, and keep project status up to date.
-- Tag private things with `#personal` or `#private` so they never leave with your work.
+- Keep private things in the **🏡 Personal** space (or tag them `#personal`) so they never leave with your work.
 - Export a backup from time to time (**⚙️ Settings → Export everything**).
