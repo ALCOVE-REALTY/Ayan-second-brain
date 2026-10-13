@@ -209,6 +209,7 @@ textarea:focus,input:focus,select:focus{border-color:var(--accent);box-shadow:0 
 <div class="pal" id="pal"><div class="pal-box"><input id="palq" type="search" placeholder="Search everything, or type to create…" autocomplete="off"><div class="pal-r" id="palr"></div></div></div>
 <div class="saved" id="saved">Saved ✓</div>
 <input type="file" id="importFile" accept="application/json" hidden>
+<input type="file" id="csvFile" accept=".csv,text/csv" hidden>
 
 <script>
 (() => {
@@ -397,7 +398,7 @@ async function syncCloud() {
 /* ---------- Gmail (live, read via the viewer's claude.ai Gmail connector) ---------- */
 const GMAIL = 'Gmail';
 const inArtifact = !!(window.claude && typeof window.claude.use === 'function');
-const MAIL_TABS = {inbox:['📥 Inbox', 'in:inbox'], apps:['📄 Applications', '(subject:(application OR resume OR cv OR "job" OR position OR vacancy) OR filename:pdf) newer_than:60d -in:sent -in:spam -in:trash'], unread:['🔵 Unread', 'in:inbox is:unread'], starred:['⭐ Starred', 'is:starred'], important:['❗ Important', 'is:important'], sent:['📤 Sent', 'in:sent'], all:['📂 All mail', '-in:spam -in:trash']};
+const MAIL_TABS = {inbox:['📥 Inbox', 'in:inbox'], apps:['📄 Applications', '(subject:(application OR applying OR resume OR cv OR "job" OR vacancy OR candidature) OR (filename:pdf (resume OR cv))) newer_than:60d -in:sent -from:alcoverealty.in -in:spam -in:trash'], unread:['🔵 Unread', 'in:inbox is:unread'], starred:['⭐ Starred', 'is:starred'], important:['❗ Important', 'is:important'], sent:['📤 Sent', 'in:sent'], all:['📂 All mail', '-in:spam -in:trash']};
 const DENIED = ['needs_reauth', 'server_not_connected', 'selection_required', 'blocked_by_policy', 'approval_required', 'not_in_manifest', 'consent_required', 'not_granted', 'capability_disabled', 'capability_removed', 'user_changed'];
 let mcpApi, mailTab = 'inbox', mailQ = '';
 const watches = {};
@@ -519,15 +520,37 @@ function mailTo(key, tid, to) {
   const body = `📧 **From:** ${m.sender}\n[Open in Gmail](${m.url})\n\n> ${m.snippet}\n\n#email`;
   if (to === 'task') { make('task', {title:m.subject, body, due:ymd(), priority:'normal', space:'work'}); flash('Added to Work tasks ✅'); }
   else if (to === 'candidate') {
-    const addr = (m.sender.match(/[\w.+-]+@[\w-]+\.[\w.-]+/) || [''])[0];
-    const nm = m.sender.replace(/<.*>/, '').replace(/"/g, '').trim();
-    const name = nm && nm !== addr ? nm : addr.split('@')[0].replace(/[._\d]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
-    const pos = (m.subject.match(/(?:position|post|role|vacancy)\s+(?:of|for)\s+(?:the\s+)?([^.,\-–|]+)/i) || m.subject.match(/(?:application|applying)\s+for\s+(?:the\s+)?([^.,\-–|]+)/i) || ['', ''])[1].replace(/\b(position|post|role)\b/ig, '').trim();
-    const it = make('candidate', {title:name || 'New candidate', email:addr, position:pos, source:'Email', body:`📧 **Applied by email:** ${m.subject}\n[Open in Gmail](${m.url})\n\n> ${m.snippet}\n\n#candidate`});
+    const it = make('candidate', candFromMail(m, t.id));
     ui.mode[it.id] = 'write'; go('#/item/' + it.id);
   }
   else if (to === 'inbox') { make('inbox', {title:'📧 ' + m.subject + ' — ' + m.sender, body:m.url, space:'work'}); flash('Sent to Inbox 📥'); }
   else { const it = make('note', {title:m.subject, body, space:'work'}); ui.mode[it.id] = 'write'; go('#/item/' + it.id); }
+}
+// Turn an application email into candidate fields: name from the sender, position from the subject line.
+function candFromMail(m, tid) {
+  const addr = (m.sender.match(/[\w.+-]+@[\w-]+\.[\w.-]+/) || [''])[0];
+  const nm = m.sender.replace(/<.*>/, '').replace(/"/g, '').trim();
+  const name = nm && nm !== addr ? nm : addr.split('@')[0].replace(/[._\d]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+  const pos = (m.subject.match(/(?:position|post|role|vacancy)\s+(?:of|for)\s+(?:the\s+)?([^.,\-–|]+)/i) || m.subject.match(/(?:application|applying)\s+for\s+(?:the\s+)?([^.,\-–|]+)/i) || ['', ''])[1].replace(/\b(position|post|role)\b/ig, '').trim();
+  return {title:name || 'New candidate', email:addr, position:pos, source:'Email', mailId:tid, space:'work', body:`📧 **Applied by email:** ${m.subject}\n[Open in Gmail](${m.url})\n\n> ${m.snippet}\n\n#candidate`};
+}
+async function importApps() {
+  const api = await getMcp();
+  if (!api) return alert('Importing from Gmail works when this page is opened on claude.ai.');
+  flash('Checking Gmail for applications…');
+  try {
+    const r = await api.callTool(GMAIL, 'search_threads', {query:MAIL_TABS.apps[1], pageSize:50});
+    const threads = (r.payload || {}).threads || [], have = new Set(ofAll('candidate').map(c => c.mailId).filter(Boolean));
+    let n = 0;
+    threads.forEach(t => {
+      if (have.has(t.id)) return;
+      const m = threadInfo(t);
+      if (/@alcoverealty\.in/i.test(m.sender)) return;   // internal mail is never an applicant
+      make('candidate', candFromMail(m, t.id)); n++;
+    });
+    flash(n ? `Added ${n} new applicant${n > 1 ? 's' : ''} to Applied 🧑‍💼` : 'No new applications found ✓');
+    render();
+  } catch (e) { alert(connErr(e, 'Gmail')); }
 }
 function flash(txt) { setTimeout(() => { const el = $('#saved'); el.textContent = txt; el.classList.add('show'); clearTimeout(flashT); flashT = setTimeout(() => el.classList.remove('show'), 1600); }, 450); }
 function mailView() {
@@ -1001,6 +1024,7 @@ function hiringView() {
   };
   return `<div class="head"><div><h1>🧑‍💼 Hiring</h1><p class="sub" style="margin:4px 0 0">${all.filter(c => !['hired', 'rejected'].includes(c.stage)).length} active candidates across ${positions.length} position${positions.length === 1 ? '' : 's'}. Use 🧑‍💼 Candidate in 📧 Mail to add applicants straight from email.</p></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><select id="hirepos" style="width:190px"><option value="">All positions</option>${positions.map(p => `<option ${ui.hirePos === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>
+    ${inArtifact ? '<button class="btn" data-act="import-apps">📥 Import applications from Gmail</button>' : ''}
     <button class="btn pri" data-act="new" data-type="candidate">+ New candidate</button></div></div>
     <div class="board">${keys.map(col).join('')}</div>`;
 }
@@ -1011,7 +1035,8 @@ function peopleView() {
   const list = all.filter(inTab).filter(e => !q || [e.title, e.designation, e.department, e.phone, e.email, e.manager].join(' ').toLowerCase().includes(q)).sort((a, b) => (a.title || '').localeCompare(b.title || ''));
   const evs = hrEvents(30);
   return `<div class="head"><div><h1>👥 People</h1><p class="sub" style="margin:4px 0 0">Employee directory, onboarding, probation and exits.</p></div>
-    <div style="display:flex;gap:8px"><input type="search" id="pfilter" placeholder="Search name, role, phone…" value="${esc(ui.pq || '')}" style="width:220px"><button class="btn pri" data-act="new" data-type="employee">+ New employee</button></div></div>
+    <div style="display:flex;gap:8px"><input type="search" id="pfilter" placeholder="Search name, role, phone…" value="${esc(ui.pq || '')}" style="width:220px"><button class="btn" data-act="import-csv">⬆ Import from Excel/CSV</button><button class="btn pri" data-act="new" data-type="employee">+ New employee</button></div></div>
+    ${all.length ? '' : `<div class="notice">📋 Add your whole team at once: <button class="btn sm" data-act="csv-template">⬇ Download template</button> fill it in Excel, <b>Save As → CSV</b>, then click <b>⬆ Import from Excel/CSV</b>.</div>`}
     ${evs.length ? `<div class="panel" style="margin-bottom:16px"><h3>📅 Coming up in 30 days</h3>${evs.map(evRow).join('')}</div>` : ''}
     <div class="tabs" style="margin-bottom:12px">${Object.entries(tabs).map(([k, l]) => `<button class="${pt === k ? 'on' : ''}" data-act="ptab" data-t="${k}">${l} <span style="opacity:.6">${all.filter(e => k === 'all' || (k === 'active' ? e.status !== 'exited' : e.status === k)).length}</span></button>`).join('')}</div>
     <div class="panel ptable">${list.length ? `<div class="row h"><span>Name</span><span>Designation</span><span>Department</span><span>Joined</span><span>Phone</span></div>` + list.map(e => `<div class="row">
@@ -1298,8 +1323,8 @@ async function handoverNote() {
   const it = make('note', {title:'Handover — ' + niceDate(t), body:b, pinned:true});
   ui.mode[it.id] = 'write'; go('#/item/' + it.id);
 }
-async function downloadJSON(name, obj) {
-  const json = JSON.stringify(obj, null, 2);
+const downloadJSON = (name, obj) => downloadText(name, JSON.stringify(obj, null, 2));
+async function downloadText(name, json) {
   const dl = inArtifact ? await claude.use('downloads') : null;
   if (dl) { try { await dl.save({filename:name, data:json}); } catch (e) {} return; }
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([json], {type:'application/json'})); a.download = name; a.click();
@@ -1346,6 +1371,9 @@ document.addEventListener('click', e => {
     case 'remdays': ui.remDays = +el.dataset.d; render(); break;
     case 'send-digest': sendDigest(el.dataset.via); break;
     case 'wa-fill': waFill(); break;
+    case 'import-apps': importApps(); break;
+    case 'import-csv': $('#csvFile').click(); break;
+    case 'csv-template': downloadText('alcove-employees-template.csv', '﻿' + CSV_COLS.join(',') + '\n'); break;
     case 'hr-move': { const c = get(id), keys = Object.keys(STAGES), i = Math.max(0, keys.indexOf(c.stage));
       c.stage = keys[Math.min(keys.length - 1, Math.max(0, i + +el.dataset.dir))]; touch(c); save(true); render();
       if (c.stage === 'hired') flash('Hired 🎉 Open the card to create their employee record'); break; }
@@ -1495,7 +1523,61 @@ $('#importFile').addEventListener('change', e => {
 db.settings = db.settings || {theme:'auto'};
 save(true);
 render();
-initCloud().then(autoDigest);
+/* ---------- employee import from Excel (saved as CSV) ---------- */
+const CSV_COLS = ['Name', 'Employee ID', 'Designation', 'Department', 'Location', 'Company', 'Employment type', 'Reports to', 'Joining date', 'Date of birth', 'Phone', 'Email', 'Status'];
+function parseCSV(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  text = text.replace(/^﻿/, '');
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') q = false; else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim()));
+}
+// Indian-style dates first (DD/MM/YYYY), then ISO, then anything the browser understands.
+function parseDate(s) {
+  s = (s || '').trim(); if (!s) return '';
+  let m;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  if ((m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/))) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
+  const d = new Date(s); return isNaN(d) ? '' : ymd(d);
+}
+function importEmployees(text) {
+  const rows = parseCSV(text); if (rows.length < 2) return alert('That file has no rows. Use the template and save it as CSV.');
+  const H = rows[0].map(h => h.trim().toLowerCase());
+  const col = (...names) => H.findIndex(h => names.some(n => h === n || h.includes(n)));
+  const ix = {title:col('name', 'employee name'), empId:col('employee id', 'emp id', 'emp code', 'code'), designation:col('designation', 'role', 'title'), department:col('department', 'dept'),
+    location:col('location', 'site'), company:col('company'), etype:col('employment type', 'type'), manager:col('reports to', 'manager', 'reporting'), joinDate:col('joining', 'doj', 'date of joining'),
+    dob:col('birth', 'dob'), phone:col('phone', 'mobile', 'contact'), email:col('email', 'mail'), status:col('status')};
+  if (ix.title < 0) return alert('Could not find a "Name" column. Use the template headings.');
+  const t = ymd(); let added = 0, updated = 0;
+  rows.slice(1).forEach(r => {
+    const v = k => ix[k] >= 0 ? (r[ix[k]] || '').trim() : '';
+    const name = v('title'); if (!name) return;
+    const f = {title:name, empId:v('empId'), designation:v('designation'), department:v('department'), location:v('location'), company:v('company'), etype:v('etype'), manager:v('manager'),
+      joinDate:parseDate(v('joinDate')), dob:parseDate(v('dob')), phone:v('phone'), email:v('email')};
+    const st = v('status').toLowerCase(), status = Object.keys(EMP_STATUS).find(k => st && (k.startsWith(st.slice(0, 4)) || EMP_STATUS[k].toLowerCase().includes(st))) || (f.joinDate > t ? 'onboarding' : 'active');
+    const ex = ofAll('employee').find(e => (f.empId && e.empId === f.empId) || (e.title || '').toLowerCase() === name.toLowerCase());
+    if (ex) { Object.entries(f).forEach(([k, val]) => { if (val) ex[k] = val; }); if (v('status')) ex.status = status; touch(ex); updated++; }
+    else { make('employee', {...f, status, space:'work'}); added++; }
+  });
+  save(true); render(); flash(`Imported: ${added} added, ${updated} updated 👥`);
+}
+document.getElementById('csvFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (/\.xlsx?$/i.test(f.name)) { alert('Please save the Excel file as CSV first (File → Save As → CSV), then import that.'); e.target.value = ''; return; }
+  const r = new FileReader(); r.onload = () => { importEmployees(r.result); e.target.value = ''; }; r.readAsText(f);
+});
+
+initCloud().then(autoDigest).then(() => {
+  // First run: set up the HR starter kit once (synced, so it never repeats on another device).
+  if (!db.settings.hrKitDone) { db.settings.hrKitDone = true; save(true); hrKit(); }
+});
 })();
 </script>
 </body>
